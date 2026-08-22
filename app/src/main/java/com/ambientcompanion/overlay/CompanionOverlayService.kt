@@ -113,7 +113,6 @@ class CompanionOverlayService : Service() {
             override fun onDown(event: MotionEvent): Boolean = true
 
             override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
-                view.performClick()
                 showMessage(contextMessages.random())
                 return true
             }
@@ -156,6 +155,7 @@ class CompanionOverlayService : Service() {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     (view as CompanionView).setDragging(false)
+                    if (!dragged && event.actionMasked == MotionEvent.ACTION_UP) view.performClick()
                     if (dragged) snapToNearestEdge(view) else view.startIdleAnimation()
                     true
                 }
@@ -331,6 +331,9 @@ class CompanionOverlayService : Service() {
         private const val KEY_X = "normalized_x"
         private const val KEY_Y = "normalized_y"
         private const val BUBBLE_TOKEN = "message_bubble"
+        const val ACTION_PREVIEW = "com.ambientcompanion.action.PREVIEW"
+        const val ACTION_CONTEXT_UPDATED = "com.ambientcompanion.action.CONTEXT_UPDATED"
+        const val EXTRA_STATE = "companion_state"
         private val contextMessages = listOf("You've got this ✨", "Nice to see you!", "Hope your day's going well")
         private val playfulMessages = listOf("Hey! 😳", "That tickles!", "I'm awake 👀")
     }
