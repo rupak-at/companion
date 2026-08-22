@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -34,6 +35,14 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.datastore:datastore-preferences:1.2.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+    implementation("androidx.work:work-runtime-ktx:2.11.0")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:5.3.2")
+    implementation("com.squareup.retrofit2:retrofit:3.0.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
