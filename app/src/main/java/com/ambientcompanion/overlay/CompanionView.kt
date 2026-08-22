@@ -8,8 +8,10 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.view.View
 import android.view.animation.OvershootInterpolator
+import com.ambientcompanion.domain.model.CompanionState
 
 class CompanionView(context: Context) : View(context) {
+    private var state: CompanionState = CompanionState.DAY_CLEAR
     private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val facePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(58, 46, 56)
@@ -21,12 +23,18 @@ class CompanionView(context: Context) : View(context) {
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
+        updateShader(width, height)
+    }
+
+    private fun updateShader(width: Int = this.width, height: Int = this.height) {
+        if (width == 0 || height == 0) return
         val radius = minOf(width, height) * 0.37f
+        val (highlight, base) = colorsFor(state)
         bodyPaint.shader = RadialGradient(
             width / 2f - radius * 0.3f,
             height / 2f - radius * 0.35f,
             radius * 1.5f,
-            intArrayOf(Color.rgb(255, 231, 168), Color.rgb(255, 178, 82)),
+            intArrayOf(highlight, base),
             null,
             Shader.TileMode.CLAMP,
         )
@@ -42,8 +50,14 @@ class CompanionView(context: Context) : View(context) {
         canvas.drawCircle(cx, cy, radius, bodyPaint)
 
         facePaint.strokeWidth = radius * 0.13f
-        canvas.drawPoint(cx - radius * 0.34f, cy - radius * 0.1f, facePaint)
-        canvas.drawPoint(cx + radius * 0.34f, cy - radius * 0.1f, facePaint)
+        if (state == CompanionState.NIGHT_SLEEP) {
+            facePaint.style = Paint.Style.STROKE
+            canvas.drawLine(cx - radius * .45f, cy - radius * .08f, cx - radius * .22f, cy - radius * .08f, facePaint)
+            canvas.drawLine(cx + radius * .22f, cy - radius * .08f, cx + radius * .45f, cy - radius * .08f, facePaint)
+        } else {
+            canvas.drawPoint(cx - radius * 0.34f, cy - radius * 0.1f, facePaint)
+            canvas.drawPoint(cx + radius * 0.34f, cy - radius * 0.1f, facePaint)
+        }
         facePaint.style = Paint.Style.STROKE
         facePaint.strokeWidth = radius * 0.08f
         canvas.drawArc(
@@ -57,6 +71,7 @@ class CompanionView(context: Context) : View(context) {
             facePaint,
         )
         facePaint.style = Paint.Style.FILL
+        drawAccessory(canvas, cx, cy, radius)
     }
 
     override fun performClick(): Boolean {
@@ -125,5 +140,52 @@ class CompanionView(context: Context) : View(context) {
 
     fun pauseAnimation() {
         animate().cancel()
+    }
+
+    fun applyState(next: CompanionState, reducedMotion: Boolean) {
+        if (next == state) return
+        val apply = {
+            state = next
+            updateShader()
+            invalidate()
+        }
+        if (reducedMotion) {
+            apply()
+        } else {
+            animate().alpha(0f).scaleX(.86f).scaleY(.86f).setDuration(150).withEndAction {
+                apply()
+                animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220).start()
+            }.start()
+        }
+    }
+
+    private fun drawAccessory(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
+        facePaint.style = Paint.Style.STROKE
+        facePaint.strokeWidth = radius * .07f
+        when (state) {
+            CompanionState.MORNING_RAIN, CompanionState.DAY_RAIN, CompanionState.EVENING_RAIN, CompanionState.NIGHT_RAIN -> {
+                facePaint.color = Color.rgb(64, 108, 145)
+                canvas.drawArc(cx - radius * .65f, cy - radius * 1.35f, cx + radius * .65f, cy - radius * .5f, 185f, 170f, false, facePaint)
+            }
+            CompanionState.COLD, CompanionState.SNOW -> {
+                facePaint.color = Color.rgb(128, 70, 105)
+                canvas.drawLine(cx - radius * .65f, cy + radius * .48f, cx + radius * .65f, cy + radius * .48f, facePaint)
+            }
+            CompanionState.STORM -> {
+                facePaint.color = Color.rgb(255, 225, 92)
+                canvas.drawLine(cx + radius * .65f, cy - radius, cx + radius * .35f, cy - radius * .45f, facePaint)
+            }
+            else -> Unit
+        }
+        facePaint.color = Color.rgb(58, 46, 56)
+        facePaint.style = Paint.Style.FILL
+    }
+
+    private fun colorsFor(state: CompanionState): Pair<Int, Int> = when (state) {
+        CompanionState.NIGHT_CLEAR, CompanionState.NIGHT_CLOUDY, CompanionState.NIGHT_RAIN, CompanionState.NIGHT_SLEEP -> Color.rgb(220, 213, 255) to Color.rgb(119, 95, 169)
+        CompanionState.MORNING_RAIN, CompanionState.DAY_RAIN, CompanionState.EVENING_RAIN, CompanionState.STORM -> Color.rgb(211, 238, 245) to Color.rgb(101, 145, 166)
+        CompanionState.COLD, CompanionState.SNOW, CompanionState.FOG -> Color.rgb(239, 249, 249) to Color.rgb(151, 196, 199)
+        CompanionState.EVENING_CLEAR, CompanionState.EVENING_CLOUDY -> Color.rgb(255, 220, 198) to Color.rgb(199, 123, 132)
+        else -> Color.rgb(255, 231, 168) to Color.rgb(255, 178, 82)
     }
 }

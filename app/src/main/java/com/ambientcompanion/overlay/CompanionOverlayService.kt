@@ -6,7 +6,9 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Point
 import android.graphics.PixelFormat
 import android.graphics.Color
@@ -26,10 +28,20 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.ambientcompanion.MainActivity
+import com.ambientcompanion.AmbientApplication
+import com.ambientcompanion.data.preferences.UserSettings
+import com.ambientcompanion.domain.engine.MessageSelector
+import com.ambientcompanion.domain.model.CompanionState
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class CompanionOverlayService : Service() {
     private lateinit var windowManager: WindowManager
@@ -38,6 +50,22 @@ class CompanionOverlayService : Service() {
     private var quickMenuView: View? = null
     private var layoutParams: WindowManager.LayoutParams? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val app by lazy { application as AmbientApplication }
+    private val messageSelector = MessageSelector()
+    private var settings = UserSettings()
+    private var currentState = CompanionState.DAY_CLEAR
+    private var receiverRegistered = false
+    private val systemReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> companionView?.pauseAnimation()
+                Intent.ACTION_SCREEN_ON -> { companionView?.startIdleAnimation(settings.reducedMotion); refreshContext() }
+                Intent.ACTION_CONFIGURATION_CHANGED -> clampToScreen()
+                ACTION_CONTEXT_UPDATED -> refreshContext(true)
+            }
+        }
+    }
     private val preferences by lazy { getSharedPreferences(PREFS_NAME, MODE_PRIVATE) }
 
     override fun onCreate() {
@@ -59,7 +87,20 @@ class CompanionOverlayService : Service() {
             stopSelf()
             return
         }
+        registerSystemReceiver()
         showCompanion()
+        refreshContext()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_HIDE -> stopSelf()
+            ACTION_PREVIEW -> intent.getStringExtra(EXTRA_STATE)?.let { name ->
+                runCatching { CompanionState.valueOf(name) }.getOrNull()?.let(::applyState)
+            }
+            ACTION_CONTEXT_UPDATED -> refreshContext(true)
+        }
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -67,6 +108,8 @@ class CompanionOverlayService : Service() {
         bubbleView?.let { windowManager.removeView(it) }
         quickMenuView?.let { windowManager.removeView(it) }
         handler.removeCallbacksAndMessages(null)
+        if (receiverRegistered) unregisterReceiver(systemReceiver)
+        serviceScope.cancel()
         companionView = null
         isRunning = false
         super.onDestroy()
@@ -103,6 +146,62 @@ class CompanionOverlayService : Service() {
         }
     }
 
+    private fun registerSystemReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_CONFIGURATION_CHANGED)
+            addAction(ACTION_CONTEXT_UPDATED)
+        }
+        ContextCompat.registerReceiver(this, systemReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        receiverRegistered = true
+    }
+
+    private fun refreshContext(force: Boolean = false) {
+        serviceScope.launch {
+            settings = app.preferences.currentSettings()
+            resizeCompanion(settings.companionSize.dp)
+            val snapshot = app.contextRepository.refresh(force)
+            applyState(snapshot.state)
+            maybeShowAutomaticMessage(snapshot.state)
+        }
+    }
+
+    private fun applyState(state: CompanionState) {
+        if (state == currentState) return
+        currentState = state
+        companionView?.applyState(state, settings.reducedMotion)
+    }
+
+    private fun resizeCompanion(sizeDp: Int) {
+        val view = companionView ?: return
+        val params = layoutParams ?: return
+        val pixels = dp(sizeDp)
+        if (params.width == pixels) return
+        params.width = pixels
+        params.height = pixels
+        windowManager.updateViewLayout(view, params)
+        clampToScreen()
+    }
+
+    private fun clampToScreen() {
+        val view = companionView ?: return
+        val params = layoutParams ?: return
+        val screen = screenSize()
+        params.x = params.x.coerceIn(0, (screen.x - params.width).coerceAtLeast(0))
+        params.y = params.y.coerceIn(0, (screen.y - params.height).coerceAtLeast(0))
+        windowManager.updateViewLayout(view, params)
+    }
+
+    private suspend fun maybeShowAutomaticMessage(state: CompanionState) {
+        if (!settings.messagesEnabled || !settings.automaticMessages) return
+        val (lastId, lastAt) = app.preferences.lastMessage()
+        if (System.currentTimeMillis() - lastAt < AUTO_MESSAGE_INTERVAL_MS) return
+        val selected = messageSelector.select(state, lastId)
+        showMessage(selected.text)
+        app.preferences.saveLastMessage(selected.id, System.currentTimeMillis())
+    }
+
     private fun installDragHandling(view: View) {
         var initialX = 0
         var initialY = 0
@@ -113,7 +212,12 @@ class CompanionOverlayService : Service() {
             override fun onDown(event: MotionEvent): Boolean = true
 
             override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
-                showMessage(contextMessages.random())
+                if (settings.messagesEnabled) serviceScope.launch {
+                    val (lastId) = app.preferences.lastMessage()
+                    val selected = messageSelector.select(currentState, lastId)
+                    showMessage(selected.text)
+                    app.preferences.saveLastMessage(selected.id, System.currentTimeMillis())
+                }
                 return true
             }
 
@@ -296,6 +400,16 @@ class CompanionOverlayService : Service() {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             ),
         )
+        .addAction(
+            android.R.drawable.ic_menu_close_clear_cancel,
+            "Hide",
+            PendingIntent.getService(
+                this,
+                1,
+                Intent(this, CompanionOverlayService::class.java).setAction(ACTION_HIDE),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            ),
+        )
         .setOngoing(true)
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .build()
@@ -334,6 +448,8 @@ class CompanionOverlayService : Service() {
         const val ACTION_PREVIEW = "com.ambientcompanion.action.PREVIEW"
         const val ACTION_CONTEXT_UPDATED = "com.ambientcompanion.action.CONTEXT_UPDATED"
         const val EXTRA_STATE = "companion_state"
+        const val ACTION_HIDE = "com.ambientcompanion.action.HIDE"
+        private const val AUTO_MESSAGE_INTERVAL_MS = 60 * 60 * 1000L
         private val contextMessages = listOf("You've got this ✨", "Nice to see you!", "Hope your day's going well")
         private val playfulMessages = listOf("Hey! 😳", "That tickles!", "I'm awake 👀")
     }
