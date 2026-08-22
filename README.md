@@ -34,14 +34,26 @@ intentionally outside V1.
 The code is organized around a UI-independent context engine so time and weather rules
 can be tested without Android framework dependencies.
 
-## Delivery plan
+## V1 implementation status
 
-1. Prove a static, draggable overlay with edge snapping.
-2. Add animation, gestures, and message bubbles.
-3. Add time classification and context-driven states.
-4. Add optional approximate location, weather mapping, and caching.
-5. Add reliable foreground/background behavior.
-6. Polish onboarding, settings, previews, accessibility, and battery use.
+The complete V1 feature set is implemented:
+
+- Premium five-step onboarding with explained location and overlay permissions
+- Draggable foreground overlay with safe clamping, edge snapping, rotation handling,
+  normalized position persistence, live reset, and service restoration
+- Idle, tap, double-tap, drag, state-transition, and reduced-motion behavior
+- Contextual message bubbles with repeat prevention and automatic-message throttling
+- Long-press actions for refresh, opening the app, and hiding the companion
+- Tested time, sunrise/sunset, weather-code, temperature, and priority rules
+- Approximate location or manual Kathmandu fallback
+- Open-Meteo current conditions, one-hour refresh, three-hour cache, and offline fallback
+- Screen-off animation suspension and WorkManager background refresh
+- Home, settings, all-state preview, and hidden developer override screens
+- Small, medium, and large companion sizes plus message/weather/motion controls
+
+See [V1_ACCEPTANCE.md](V1_ACCEPTANCE.md) for the verification matrix. The code-level
+acceptance suite passes; physical-device and battery checks remain release QA because no
+device or emulator is bundled with the repository.
 
 ## Development
 
