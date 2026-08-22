@@ -57,7 +57,10 @@ class MainActivity : ComponentActivity() {
                 onNavigate = { screenState.value = it },
                 onRequestLocation = { locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
                 onRequestOverlay = ::openOverlaySettings,
-                onCompleteOnboarding = { updateSettings { it.copy(onboardingComplete = true) } },
+                onCompleteOnboarding = {
+                    updateSettings { it.copy(onboardingComplete = true) }
+                    toggleCompanion(true)
+                },
                 onToggleCompanion = ::toggleCompanion,
                 onRefresh = { refreshContext(true) },
                 onUpdateSettings = ::updateSettings,

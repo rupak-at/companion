@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -52,7 +53,7 @@ fun AmbientApp(
             Onboarding(onRequestLocation, onRequestOverlay, hasOverlayPermission, onCompleteOnboarding)
         } else when (screen) {
             AppScreen.HOME -> Home(settings, snapshot, overlayRunning, onToggleCompanion, onRefresh, onNavigate)
-            AppScreen.SETTINGS -> Settings(settings, onUpdateSettings, onResetPosition, onRefresh, onNavigate)
+            AppScreen.SETTINGS -> Settings(settings, onToggleCompanion, onUpdateSettings, onResetPosition, onRefresh, onNavigate)
             AppScreen.PREVIEW -> Preview(onPreviewState, onNavigate)
             AppScreen.DEBUG -> Debug(onPreviewState, onNavigate)
         }
@@ -61,7 +62,7 @@ fun AmbientApp(
 
 @Composable
 private fun Onboarding(requestLocation: () -> Unit, requestOverlay: () -> Unit, overlayAllowed: Boolean, complete: () -> Unit) {
-    var step by remember { mutableIntStateOf(0) }
+    var step by rememberSaveable { mutableIntStateOf(0) }
     val titles = listOf("Meet Ambient", "Moves with your world", "Weather, gently", "One small permission", "You're all set")
     val copy = listOf(
         "A tiny companion designed to make ordinary moments feel a little warmer.",
@@ -110,17 +111,18 @@ private fun Home(settings: UserSettings, snapshot: ContextSnapshot?, running: Bo
 }
 
 @Composable
-private fun Settings(settings: UserSettings, update: ((UserSettings) -> UserSettings) -> Unit, reset: () -> Unit, refresh: () -> Unit, navigate: (AppScreen) -> Unit) {
+private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit, update: ((UserSettings) -> UserSettings) -> Unit, reset: () -> Unit, refresh: () -> Unit, navigate: (AppScreen) -> Unit) {
     var taps by remember { mutableIntStateOf(0) }
     ScreenList("Settings", { navigate(AppScreen.HOME) }) {
         item { SectionLabel("EXPERIENCE") }
+        item { ToggleCard("Companion", "Show above your apps", settings.companionEnabled, toggleCompanion) }
         item { ToggleCard("Messages", "Show dialogue when you tap", settings.messagesEnabled) { value -> update { it.copy(messagesEnabled = value) } } }
         item { ToggleCard("Automatic messages", "At most once each hour", settings.automaticMessages) { value -> update { it.copy(automaticMessages = value) } } }
         item { ToggleCard("Weather context", "Use local conditions when available", settings.weatherEnabled) { value -> update { it.copy(weatherEnabled = value) } } }
         item { ToggleCard("Reduced motion", "Prefer gentle fades", settings.reducedMotion) { value -> update { it.copy(reducedMotion = value) } } }
         item { SectionLabel("COMPANION") }
         item { ActionCard("Size", settings.companionSize.name.lowercase().replaceFirstChar(Char::uppercase)) { val next = CompanionSize.entries[(settings.companionSize.ordinal + 1) % 3]; update { it.copy(companionSize = next) } } }
-        item { ActionCard("Location", if (settings.manualLatitude == null) "Automatic" else "Kathmandu") { update { it.copy(manualLatitude = 27.7172, manualLongitude = 85.3240) }; refresh() } }
+        item { ActionCard("Location", if (settings.manualLatitude == null) "Automatic · tap for Kathmandu" else "Kathmandu · tap for automatic") { update { if (it.manualLatitude == null) it.copy(manualLatitude = 27.7172, manualLongitude = 85.3240) else it.copy(manualLatitude = null, manualLongitude = null) }; refresh() } }
         item { ActionCard("Reset position", "Return to the right edge", reset) }
         item { ActionCard("Refresh weather", "Update environmental context", refresh) }
         item { SectionLabel("ABOUT") }

@@ -50,6 +50,27 @@ class ContextEngineTest {
         assertEquals(TimePeriod.NIGHT, TimeClassifier.classify(at(21), zone))
     }
 
+    @Test fun `sunrise and sunset override fixed boundaries`() {
+        val zone = ZoneId.of("UTC")
+        val base = LocalDateTime.of(2026, 8, 22, 0, 0).atZone(zone).toEpochSecond()
+        val sunrise = base + 6 * 3_600
+        val sunset = base + 18 * 3_600
+        assertEquals(TimePeriod.NIGHT, TimeClassifier.classify(base + 5 * 3_600, zone, sunrise, sunset))
+        assertEquals(TimePeriod.MORNING, TimeClassifier.classify(base + 7 * 3_600, zone, sunrise, sunset))
+        assertEquals(TimePeriod.DAY, TimeClassifier.classify(base + 12 * 3_600, zone, sunrise, sunset))
+        assertEquals(TimePeriod.EVENING, TimeClassifier.classify(base + 17 * 3_600, zone, sunrise, sunset))
+        assertEquals(TimePeriod.NIGHT, TimeClassifier.classify(base + 20 * 3_600, zone, sunrise, sunset))
+    }
+
+    @Test fun `every supported condition resolves without exceeding V1 states`() {
+        for (period in TimePeriod.entries) {
+            for (weather in WeatherCondition.entries) {
+                ContextEngine.determineState(CompanionContext(period, weather, 20.0, period != TimePeriod.NIGHT))
+            }
+        }
+        assertEquals(18, CompanionState.entries.size)
+    }
+
     @Test fun `message selector avoids an immediate repeat`() {
         val selector = MessageSelector(Random(2))
         val first = selector.select(CompanionState.DAY_CLEAR)
