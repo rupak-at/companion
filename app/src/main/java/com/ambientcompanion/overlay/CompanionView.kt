@@ -21,6 +21,11 @@ class CompanionView(context: Context) : View(context) {
         color = Color.argb(35, 35, 20, 30)
     }
 
+    init {
+        contentDescription = "Ambient Companion. Tap for a message, drag to move, or long press for actions."
+        isClickable = true
+    }
+
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         updateShader(width, height)

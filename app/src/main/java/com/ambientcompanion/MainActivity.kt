@@ -38,7 +38,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                app.preferences.settings.collect { settingsState.value = it }
+                app.preferences.settings.collect { settings ->
+                    settingsState.value = settings
+                    if (settings.companionEnabled && Settings.canDrawOverlays(this@MainActivity) && !CompanionOverlayService.isRunning) {
+                        ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, CompanionOverlayService::class.java))
+                    }
+                }
             }
         }
         refreshContext()
@@ -56,7 +61,10 @@ class MainActivity : ComponentActivity() {
                 onToggleCompanion = ::toggleCompanion,
                 onRefresh = { refreshContext(true) },
                 onUpdateSettings = ::updateSettings,
-                onResetPosition = { lifecycleScope.launch { app.preferences.resetPosition() } },
+                onResetPosition = {
+                    lifecycleScope.launch { app.preferences.resetPosition() }
+                    startService(Intent(this, CompanionOverlayService::class.java).setAction(CompanionOverlayService.ACTION_RESET_POSITION))
+                },
                 onPreviewState = { state ->
                     startService(Intent(this, CompanionOverlayService::class.java).apply {
                         action = CompanionOverlayService.ACTION_PREVIEW

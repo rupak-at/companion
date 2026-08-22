@@ -55,6 +55,7 @@ class CompanionOverlayService : Service() {
     private val messageSelector = MessageSelector()
     private var settings = UserSettings()
     private var currentState = CompanionState.DAY_CLEAR
+    private var previewUntil = 0L
     private var receiverRegistered = false
     private val systemReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -94,11 +95,19 @@ class CompanionOverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_HIDE -> stopSelf()
+            ACTION_HIDE -> serviceScope.launch {
+                app.preferences.updateSettings { it.copy(companionEnabled = false) }
+                stopSelf()
+            }
             ACTION_PREVIEW -> intent.getStringExtra(EXTRA_STATE)?.let { name ->
-                runCatching { CompanionState.valueOf(name) }.getOrNull()?.let(::applyState)
+                runCatching { CompanionState.valueOf(name) }.getOrNull()?.let {
+                    previewUntil = android.os.SystemClock.uptimeMillis() + PREVIEW_DURATION_MS
+                    applyState(it)
+                    handler.postDelayed({ refreshContext() }, PREVIEW_DURATION_MS)
+                }
             }
             ACTION_CONTEXT_UPDATED -> refreshContext(true)
+            ACTION_RESET_POSITION -> resetPosition()
         }
         return START_STICKY
     }
@@ -162,7 +171,7 @@ class CompanionOverlayService : Service() {
             settings = app.preferences.currentSettings()
             resizeCompanion(settings.companionSize.dp)
             val snapshot = app.contextRepository.refresh(force)
-            applyState(snapshot.state)
+            if (android.os.SystemClock.uptimeMillis() >= previewUntil) applyState(snapshot.state)
             maybeShowAutomaticMessage(snapshot.state)
         }
     }
@@ -191,6 +200,16 @@ class CompanionOverlayService : Service() {
         params.x = params.x.coerceIn(0, (screen.x - params.width).coerceAtLeast(0))
         params.y = params.y.coerceIn(0, (screen.y - params.height).coerceAtLeast(0))
         windowManager.updateViewLayout(view, params)
+    }
+
+    private fun resetPosition() {
+        val view = companionView ?: return
+        val params = layoutParams ?: return
+        val screen = screenSize()
+        params.x = (screen.x - params.width).coerceAtLeast(0)
+        params.y = ((screen.y - params.height) * .45f).roundToInt().coerceAtLeast(0)
+        windowManager.updateViewLayout(view, params)
+        snapToNearestEdge(view)
     }
 
     private suspend fun maybeShowAutomaticMessage(state: CompanionState) {
@@ -353,11 +372,16 @@ class CompanionOverlayService : Service() {
                 }
             }, LinearLayout.LayoutParams(dp(176), dp(48)))
         }
-        action("Refresh context") { showMessage("All fresh ✨") }
+        action("Refresh context") { refreshContext(true); showMessage("All fresh ✨") }
         action("Open Ambient") {
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
-        action("Hide for now") { stopSelf() }
+        action("Hide for now") {
+            serviceScope.launch {
+                app.preferences.updateSettings { it.copy(companionEnabled = false) }
+                stopSelf()
+            }
+        }
 
         val params = overlayParams(dp(192), WindowManager.LayoutParams.WRAP_CONTENT).apply {
             flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
@@ -449,7 +473,9 @@ class CompanionOverlayService : Service() {
         const val ACTION_CONTEXT_UPDATED = "com.ambientcompanion.action.CONTEXT_UPDATED"
         const val EXTRA_STATE = "companion_state"
         const val ACTION_HIDE = "com.ambientcompanion.action.HIDE"
+        const val ACTION_RESET_POSITION = "com.ambientcompanion.action.RESET_POSITION"
         private const val AUTO_MESSAGE_INTERVAL_MS = 60 * 60 * 1000L
+        private const val PREVIEW_DURATION_MS = 10_000L
         private val contextMessages = listOf("You've got this ✨", "Nice to see you!", "Hope your day's going well")
         private val playfulMessages = listOf("Hey! 😳", "That tickles!", "I'm awake 👀")
     }
