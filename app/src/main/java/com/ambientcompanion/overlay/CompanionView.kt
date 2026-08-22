@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.view.View
+import android.view.animation.OvershootInterpolator
 
 class CompanionView(context: Context) : View(context) {
     private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -60,6 +61,69 @@ class CompanionView(context: Context) : View(context) {
 
     override fun performClick(): Boolean {
         super.performClick()
+        animate().cancel()
+        scaleX = 0.9f
+        scaleY = 0.9f
+        animate()
+            .scaleX(1f)
+            .scaleY(1f)
+            .rotationBy(8f)
+            .setDuration(420)
+            .setInterpolator(OvershootInterpolator())
+            .withEndAction { animate().rotation(0f).setDuration(160).start() }
+            .start()
         return true
+    }
+
+    fun playSurprisedReaction() {
+        animate().cancel()
+        animate()
+            .scaleX(1.22f)
+            .scaleY(0.82f)
+            .setDuration(140)
+            .withEndAction {
+                animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setInterpolator(OvershootInterpolator())
+                    .setDuration(320)
+                    .start()
+            }
+            .start()
+    }
+
+    fun setDragging(dragging: Boolean) {
+        animate().cancel()
+        animate()
+            .scaleX(if (dragging) 0.92f else 1f)
+            .scaleY(if (dragging) 1.08f else 1f)
+            .alpha(if (dragging) 0.88f else 1f)
+            .setDuration(150)
+            .start()
+    }
+
+    fun startIdleAnimation(reducedMotion: Boolean = false) {
+        animate().cancel()
+        if (reducedMotion) {
+            alpha = 1f
+            scaleX = 1f
+            scaleY = 1f
+            return
+        }
+        animate()
+            .translationY(-resources.displayMetrics.density * 3f)
+            .setDuration(1_800)
+            .withEndAction {
+                animate()
+                    .translationY(0f)
+                    .setDuration(1_800)
+                    .withEndAction { startIdleAnimation(false) }
+                    .start()
+            }
+            .start()
+    }
+
+    fun pauseAnimation() {
+        animate().cancel()
     }
 }
