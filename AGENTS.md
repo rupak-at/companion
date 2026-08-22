@@ -35,3 +35,7 @@ These rules apply to every automated agent working in this repository.
 - Prefer approximate location, graceful offline fallbacks, low-frequency background work,
   and low battery use.
 - Keep V2/V3 ideas out of V1 unless the user explicitly expands the scope.
+- Treat premium, clean presentation as a product requirement: use a restrained warm palette,
+  generous spacing, clear type hierarchy, subtle depth, and one dominant action per screen.
+  Avoid default-looking component collections, visual clutter, heavy borders, and excessive
+  color or motion.
