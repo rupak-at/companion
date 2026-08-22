@@ -1,0 +1,13 @@
+# Local product brief; intentionally never committed.
+ambient_companion_v1.md
+
+# Android / Gradle generated files.
+.gradle/
+build/
+**/build/
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
