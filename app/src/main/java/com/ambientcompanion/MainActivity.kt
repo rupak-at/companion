@@ -2,6 +2,8 @@ package com.ambientcompanion
 
 import android.Manifest
 import android.content.Intent
+import android.content.ComponentName
+import android.app.StatusBarManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -17,6 +19,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.ambientcompanion.data.preferences.UserSettings
 import com.ambientcompanion.domain.repository.ContextSnapshot
 import com.ambientcompanion.overlay.CompanionOverlayService
+import com.ambientcompanion.quicksettings.CompanionTileService
 import com.ambientcompanion.ui.AmbientApp
 import com.ambientcompanion.ui.AppScreen
 import kotlinx.coroutines.launch
@@ -68,6 +71,7 @@ class MainActivity : ComponentActivity() {
                     lifecycleScope.launch { app.preferences.resetPosition() }
                     startService(Intent(this, CompanionOverlayService::class.java).setAction(CompanionOverlayService.ACTION_RESET_POSITION))
                 },
+                onAddQuickTile = ::requestQuickSettingsTile,
                 onPreviewState = { state ->
                     startService(Intent(this, CompanionOverlayService::class.java).apply {
                         action = CompanionOverlayService.ACTION_PREVIEW
@@ -113,6 +117,19 @@ class MainActivity : ComponentActivity() {
             if (CompanionOverlayService.isRunning) {
                 sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
             }
+        }
+    }
+
+    private fun requestQuickSettingsTile() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getSystemService(StatusBarManager::class.java).requestAddTileService(
+                ComponentName(this, CompanionTileService::class.java),
+                "Ambient Companion",
+                android.graphics.drawable.Icon.createWithResource(this, com.ambientcompanion.R.drawable.ic_stat_ambient),
+                mainExecutor,
+            ) {}
+        } else {
+            startActivity(Intent("android.settings.QUICK_SETTINGS_SETTINGS"))
         }
     }
 }

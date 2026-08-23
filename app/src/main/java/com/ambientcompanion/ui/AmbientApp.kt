@@ -47,6 +47,7 @@ fun AmbientApp(
     onRefresh: () -> Unit,
     onUpdateSettings: ((UserSettings) -> UserSettings) -> Unit,
     onResetPosition: () -> Unit,
+    onAddQuickTile: () -> Unit,
     onPreviewState: (CompanionState) -> Unit,
 ) {
     MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(primary = Aubergine, surface = Porcelain)) {
@@ -54,7 +55,7 @@ fun AmbientApp(
             Onboarding(onRequestLocation, onRequestOverlay, hasOverlayPermission, onCompleteOnboarding)
         } else when (screen) {
             AppScreen.HOME -> Home(settings, snapshot, overlayRunning, onToggleCompanion, onRefresh, onNavigate)
-            AppScreen.SETTINGS -> Settings(settings, onToggleCompanion, onUpdateSettings, onResetPosition, onRefresh, onNavigate)
+            AppScreen.SETTINGS -> Settings(settings, onToggleCompanion, onUpdateSettings, onResetPosition, onAddQuickTile, onRefresh, onNavigate)
             AppScreen.PREVIEW -> Preview(onPreviewState, onNavigate)
             AppScreen.DEBUG -> Debug(onPreviewState, onNavigate)
         }
@@ -112,7 +113,7 @@ private fun Home(settings: UserSettings, snapshot: ContextSnapshot?, running: Bo
 }
 
 @Composable
-private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit, update: ((UserSettings) -> UserSettings) -> Unit, reset: () -> Unit, refresh: () -> Unit, navigate: (AppScreen) -> Unit) {
+private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit, update: ((UserSettings) -> UserSettings) -> Unit, reset: () -> Unit, addQuickTile: () -> Unit, refresh: () -> Unit, navigate: (AppScreen) -> Unit) {
     var taps by remember { mutableIntStateOf(0) }
     ScreenList("Settings", { navigate(AppScreen.HOME) }) {
         item { SectionLabel("EXPERIENCE") }
@@ -130,6 +131,7 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         item { OpacityControl(settings.idleOpacity) { value -> update { it.copy(idleOpacity = value) } } }
         item { ActionCard("Location", if (settings.manualLatitude == null) "Automatic · tap for Kathmandu" else "Kathmandu · tap for automatic") { update { if (it.manualLatitude == null) it.copy(manualLatitude = 27.7172, manualLongitude = 85.3240) else it.copy(manualLatitude = null, manualLongitude = null) }; refresh() } }
         item { ActionCard("Reset position", "Return to the right edge", reset) }
+        item { ActionCard("Quick Settings button", "Add a system-area show/hide control", addQuickTile) }
         item { ActionCard("Refresh weather", "Update environmental context", refresh) }
         item { SectionLabel("ABOUT") }
         item { ActionCard("Ambient Companion", "Version 0.1.0") { taps++; if (taps >= 7) navigate(AppScreen.DEBUG) } }
