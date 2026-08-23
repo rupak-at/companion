@@ -1,6 +1,7 @@
 package com.ambientcompanion
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.ComponentName
 import android.app.StatusBarManager
@@ -75,9 +76,7 @@ class MainActivity : ComponentActivity() {
                     startService(Intent(this, CompanionOverlayService::class.java).setAction(CompanionOverlayService.ACTION_RESET_POSITION))
                 },
                 onAddQuickTile = ::requestQuickSettingsTile,
-                onOpenAccessibilitySettings = {
-                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                },
+                onOpenAccessibilitySettings = ::openAccessibilityServiceSettings,
                 onPreviewState = { state ->
                     startService(Intent(this, CompanionOverlayService::class.java).apply {
                         action = CompanionOverlayService.ACTION_PREVIEW
@@ -107,6 +106,20 @@ class MainActivity : ComponentActivity() {
 
     private fun openOverlaySettings() {
         startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:$packageName".toUri()))
+    }
+
+    private fun openAccessibilityServiceSettings() {
+        val service = ComponentName(this, AssistiveControlService::class.java)
+        val detailsIntent = Intent(ACTION_ACCESSIBILITY_DETAILS_SETTINGS).apply {
+            putExtra(Intent.EXTRA_COMPONENT_NAME, service)
+        }
+        try {
+            startActivity(detailsIntent)
+        } catch (_: ActivityNotFoundException) {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        } catch (_: SecurityException) {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
     }
 
     private fun toggleCompanion(enabled: Boolean) {
@@ -162,5 +175,10 @@ class MainActivity : ComponentActivity() {
         } else {
             startActivity(Intent("android.settings.QUICK_SETTINGS_SETTINGS"))
         }
+    }
+
+    companion object {
+        private const val ACTION_ACCESSIBILITY_DETAILS_SETTINGS =
+            "android.settings.ACCESSIBILITY_DETAILS_SETTINGS"
     }
 }

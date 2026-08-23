@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="accessibility_service_label">Ambient assistive controls</string>
+    <string name="accessibility_service_summary">Floating button actions for easier phone control</string>
     <string name="accessibility_service_description">Provides user-triggered Back, Home, Recents, notification, Quick Settings, lock-screen, and power-dialog actions from the floating companion. Ambient does not inspect or store screen content.</string>
 </resources>
