@@ -39,6 +39,7 @@ fallback behavior, supported-state coverage, and non-repeating message selection
 - [x] Dedicated public lock-screen notification icon
 - [x] Optional Android Quick Settings show/hide tile
 - [x] Triple-tap MediaProjection screenshot with explicit system consent
+- [x] Opt-in, user-triggered accessibility global actions without window-content access
 - [x] All-state preview and hidden developer override screen
 - [x] Companion state survives normal app reopening
 
@@ -66,6 +67,8 @@ cannot be certified by JVM tests or static lint alone.
 - [ ] Triple-tap, approve capture, and confirm the PNG appears in Pictures/Ambient
 - [ ] Deny screenshot consent and confirm the overlay continues without interruption
 - [ ] Confirm Android blacks out protected content rather than capturing secure screens
+- [ ] Enable, disable, and re-enable Ambient assistive controls
+- [ ] Exercise every long-press assistive action on supported physical devices
 - [ ] Complete a crash-free daily-use soak test
 
 The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.

@@ -55,11 +55,20 @@ The complete V1 feature set is implemented:
 - Public lock-screen notification with a dedicated Ambient status icon
 - Optional Quick Settings tile for showing or hiding the companion from system controls
 - Triple-tap screenshot capture through Android's system MediaProjection consent flow
+- Optional assistive controls for Back, Home, Recents, notifications, Quick Settings,
+  lock screen, and the power dialog from the companion's long-press panel
 
 Triple-tapping the floating companion opens Android's official screen-capture confirmation.
 After approval, one screenshot is saved to `Pictures/Ambient`. Android may black out secure,
 banking, password, incognito, or DRM-protected content. Capture permission is controlled by
 the operating system and is not silently bypassed or retained by the app.
+
+Assistive controls are disabled by default. Enabling them opens Android Accessibility
+Settings, where the user must explicitly activate `Ambient assistive controls`. The service
+does not retrieve window content and ignores accessibility events; it performs only the
+global action the user selects. The floating companion continues to use the normal Android
+overlay permission, so enabling assistive controls does not bypass protected lock-screen or
+authentication surfaces.
 
 ## Android system UI behavior
 
