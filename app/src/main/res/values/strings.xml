@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="accessibility_service_label">Ambient Companion controls</string>
+    <string name="app_name">Ambient Companion</string>
+    <string name="accessibility_service_name">Ambient Companion controls</string>
     <string name="accessibility_service_summary">Floating button actions for easier phone control</string>
-    <string name="accessibility_service_description">Provides user-triggered Back, Home, Recents, notification, Quick Settings, lock-screen, and power-dialog actions from the floating companion. Ambient does not inspect or store screen content.</string>
+    <string name="accessibility_description">Shows the Ambient Companion control and performs only the system actions you request. It does not read screen content.</string>
 </resources>

@@ -14,7 +14,7 @@
         android:name=".AmbientApplication"
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
-        android:label="Ambient Companion"
+        android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.AmbientCompanion">
         <activity
@@ -48,7 +48,7 @@
             android:name=".quicksettings.CompanionTileService"
             android:exported="true"
             android:icon="@drawable/ic_stat_ambient"
-            android:label="Ambient Companion"
+            android:label="@string/app_name"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
@@ -60,9 +60,9 @@
 
         <service
             android:name=".accessibility.AssistiveControlService"
-            android:description="@string/accessibility_service_description"
+            android:description="@string/accessibility_description"
             android:exported="true"
-            android:label="@string/accessibility_service_label"
+            android:label="@string/accessibility_service_name"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

@@ -4,7 +4,7 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagRequestAccessibilityButton"
     android:canRetrieveWindowContent="false"
-    android:description="@string/accessibility_service_description"
+    android:description="@string/accessibility_description"
     android:summary="@string/accessibility_service_summary"
     android:notificationTimeout="100"
     android:settingsActivity="com.ambientcompanion.MainActivity" />
