@@ -4,10 +4,8 @@ import android.app.PendingIntent
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Build
-import android.provider.Settings
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import androidx.core.content.ContextCompat
 import com.ambientcompanion.AmbientApplication
 import com.ambientcompanion.MainActivity
 import com.ambientcompanion.overlay.CompanionOverlayService
@@ -27,15 +25,14 @@ class CompanionTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        if (!Settings.canDrawOverlays(this)) {
+        if (!CompanionOverlayService.isConnected) {
             openAmbient()
             return
         }
         val enabled = !CompanionOverlayService.isRunning
-        val service = Intent(this, CompanionOverlayService::class.java)
-        if (enabled) ContextCompat.startForegroundService(this, service) else stopService(service)
         scope.launch {
             (application as AmbientApplication).preferences.updateSettings { it.copy(companionEnabled = enabled) }
+            sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
             updateTile(enabled)
         }
     }

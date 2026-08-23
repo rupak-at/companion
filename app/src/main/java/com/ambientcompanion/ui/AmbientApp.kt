@@ -38,12 +38,10 @@ fun AmbientApp(
     settingsLoaded: Boolean,
     snapshot: ContextSnapshot?,
     screen: AppScreen,
-    hasOverlayPermission: Boolean,
     hasAccessibilityPermission: Boolean,
     overlayRunning: Boolean,
     onNavigate: (AppScreen) -> Unit,
     onRequestLocation: () -> Unit,
-    onRequestOverlay: () -> Unit,
     onCompleteOnboarding: () -> Unit,
     onToggleCompanion: (Boolean) -> Unit,
     onRefresh: () -> Unit,
@@ -59,9 +57,7 @@ fun AmbientApp(
         } else if (!settings.onboardingComplete) {
             Onboarding(
                 onRequestLocation,
-                onRequestOverlay,
                 onOpenAccessibilitySettings,
-                hasOverlayPermission,
                 hasAccessibilityPermission,
                 onCompleteOnboarding,
             )
@@ -93,26 +89,23 @@ private fun LaunchScreen() {
 @Composable
 private fun Onboarding(
     requestLocation: () -> Unit,
-    requestOverlay: () -> Unit,
     requestAccessibility: () -> Unit,
-    overlayAllowed: Boolean,
     accessibilityAllowed: Boolean,
     complete: () -> Unit,
 ) {
     var step by rememberSaveable { mutableIntStateOf(0) }
-    val titles = listOf("Meet Ambient", "Moves with your world", "Weather, gently", "Float anywhere", "Helpful controls", "You're all set")
+    val titles = listOf("Meet Ambient", "Moves with your world", "Weather, gently", "Helpful controls", "You're all set")
     val copy = listOf(
         "A tiny companion designed to make ordinary moments feel a little warmer.",
         "Morning energy, evening calm, and a sleepy face when the day winds down.",
         "Approximate location helps Ambient notice rain, warmth, and daylight. Your location history is never stored.",
-        "Allow Ambient to appear over your home screen and apps. You can hide it instantly at any time.",
         "In Accessibility, open Ambient Companion controls and turn on its main switch. Leave Shortcut off unless you want Android's optional quick toggle.",
         "Your companion is ready to say hello.",
     )
     PremiumBackground {
         Column(Modifier.fillMaxSize().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text("0${step + 1}  /  06", color = AmberDeep, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-            Spacer(Modifier.height(34.dp)); Mascot(if (step == 5) CompanionState.MORNING_CLEAR else CompanionState.DAY_CLEAR, 148)
+            Text("0${step + 1}  /  05", color = AmberDeep, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            Spacer(Modifier.height(34.dp)); Mascot(if (step == 4) CompanionState.MORNING_CLEAR else CompanionState.DAY_CLEAR, 148)
             Spacer(Modifier.height(34.dp)); Text(titles[step], color = Ink, fontSize = 34.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
             Spacer(Modifier.height(12.dp)); Text(copy[step], color = MutedInk, fontSize = 16.sp, lineHeight = 23.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(36.dp))
@@ -122,9 +115,8 @@ private fun Onboarding(
                     Spacer(Modifier.height(10.dp))
                     OutlinedButton(onClick = { step++ }, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) { Text("Choose a city later", color = Ink) }
                 }
-                3 -> PrimaryButton(if (overlayAllowed) "Continue" else "Allow floating companion") { if (overlayAllowed) step++ else requestOverlay() }
-                4 -> PrimaryButton(if (accessibilityAllowed) "Continue" else "Find Ambient Companion controls") { if (accessibilityAllowed) step++ else requestAccessibility() }
-                5 -> PrimaryButton("Meet my companion", complete)
+                3 -> PrimaryButton(if (accessibilityAllowed) "Continue" else "Find Ambient Companion controls") { if (accessibilityAllowed) step++ else requestAccessibility() }
+                4 -> PrimaryButton("Meet my companion", complete)
                 else -> PrimaryButton("Continue") { step++ }
             }
         }

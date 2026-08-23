@@ -11,13 +11,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.ambientcompanion.data.preferences.UserSettings
-import com.ambientcompanion.accessibility.AssistiveControlService
 import com.ambientcompanion.domain.repository.ContextSnapshot
 import com.ambientcompanion.overlay.CompanionOverlayService
 import com.ambientcompanion.quicksettings.CompanionTileService
@@ -31,7 +28,6 @@ class MainActivity : ComponentActivity() {
     private var settingsLoadedState = androidx.compose.runtime.mutableStateOf(false)
     private var snapshotState = androidx.compose.runtime.mutableStateOf<ContextSnapshot?>(null)
     private var screenState = androidx.compose.runtime.mutableStateOf(AppScreen.HOME)
-    private var overlayPermissionState = androidx.compose.runtime.mutableStateOf(false)
     private var accessibilityEnabledState = androidx.compose.runtime.mutableStateOf(false)
 
     private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -47,9 +43,7 @@ class MainActivity : ComponentActivity() {
                 app.preferences.settings.collect { settings ->
                     settingsState.value = settings
                     settingsLoadedState.value = true
-                    if (settings.companionEnabled && Settings.canDrawOverlays(this@MainActivity) && !CompanionOverlayService.isRunning) {
-                        ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, CompanionOverlayService::class.java))
-                    }
+                    sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
                 }
             }
         }
@@ -60,24 +54,22 @@ class MainActivity : ComponentActivity() {
                 settingsLoaded = settingsLoadedState.value,
                 snapshot = snapshotState.value,
                 screen = screenState.value,
-                hasOverlayPermission = overlayPermissionState.value,
                 hasAccessibilityPermission = accessibilityEnabledState.value,
                 overlayRunning = CompanionOverlayService.isRunning,
                 onNavigate = { screenState.value = it },
                 onRequestLocation = { locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
-                onRequestOverlay = ::openOverlaySettings,
                 onCompleteOnboarding = ::completeOnboarding,
                 onToggleCompanion = ::toggleCompanion,
                 onRefresh = { refreshContext(true) },
                 onUpdateSettings = ::updateSettings,
                 onResetPosition = {
                     lifecycleScope.launch { app.preferences.resetPosition() }
-                    startService(Intent(this, CompanionOverlayService::class.java).setAction(CompanionOverlayService.ACTION_RESET_POSITION))
+                    sendBroadcast(Intent(CompanionOverlayService.ACTION_RESET_POSITION).setPackage(packageName))
                 },
                 onAddQuickTile = ::requestQuickSettingsTile,
                 onOpenAccessibilitySettings = ::openAccessibilityServiceSettings,
                 onPreviewState = { state ->
-                    startService(Intent(this, CompanionOverlayService::class.java).apply {
+                    sendBroadcast(Intent(CompanionOverlayService.ACTION_PREVIEW).setPackage(packageName).apply {
                         action = CompanionOverlayService.ACTION_PREVIEW
                         putExtra(CompanionOverlayService.EXTRA_STATE, state.name)
                     })
@@ -88,7 +80,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        overlayPermissionState.value = Settings.canDrawOverlays(this)
         accessibilityEnabledState.value = isAssistiveServiceEnabled()
     }
 
@@ -97,14 +88,10 @@ class MainActivity : ComponentActivity() {
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
         ).orEmpty()
-        val expected = ComponentName(this, AssistiveControlService::class.java)
+        val expected = ComponentName(this, CompanionOverlayService::class.java)
         return enabledServices.split(':')
             .mapNotNull(ComponentName::unflattenFromString)
             .any { it == expected }
-    }
-
-    private fun openOverlaySettings() {
-        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:$packageName".toUri()))
     }
 
     private fun openAccessibilityServiceSettings() {
@@ -112,28 +99,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun toggleCompanion(enabled: Boolean) {
-        if (enabled && !Settings.canDrawOverlays(this)) {
-            openOverlaySettings()
+        if (enabled && !isAssistiveServiceEnabled()) {
+            openAccessibilityServiceSettings()
             return
         }
-        if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        val intent = Intent(this, CompanionOverlayService::class.java)
-        if (enabled) ContextCompat.startForegroundService(this, intent) else stopService(intent)
         updateSettings { it.copy(companionEnabled = enabled) }
     }
 
     private fun completeOnboarding() {
         lifecycleScope.launch {
             app.preferences.updateSettings { it.copy(onboardingComplete = true, companionEnabled = true) }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-            ContextCompat.startForegroundService(
-                this@MainActivity,
-                Intent(this@MainActivity, CompanionOverlayService::class.java),
-            )
+            sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
         }
     }
 
@@ -147,9 +123,7 @@ class MainActivity : ComponentActivity() {
     private fun updateSettings(transform: (UserSettings) -> UserSettings) {
         lifecycleScope.launch {
             app.preferences.updateSettings(transform)
-            if (CompanionOverlayService.isRunning) {
-                sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
-            }
+            sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
         }
     }
 

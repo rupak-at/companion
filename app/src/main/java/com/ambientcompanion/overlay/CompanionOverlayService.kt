@@ -1,10 +1,7 @@
 package com.ambientcompanion.overlay
 
 import android.animation.ValueAnimator
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
+import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.BroadcastReceiver
 import android.content.Intent
@@ -14,7 +11,6 @@ import android.graphics.PixelFormat
 import android.graphics.Color
 import android.os.Build
 import android.os.Handler
-import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
@@ -22,20 +18,17 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.GridLayout
 import android.widget.TextView
-import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.ambientcompanion.MainActivity
 import com.ambientcompanion.AmbientApplication
-import com.ambientcompanion.R
 import com.ambientcompanion.data.preferences.UserSettings
 import com.ambientcompanion.accessibility.AssistiveAction
-import com.ambientcompanion.accessibility.AssistiveControlService
 import com.ambientcompanion.domain.engine.MessageSelector
 import com.ambientcompanion.domain.model.CompanionState
 import com.ambientcompanion.screenshot.ScreenshotPermissionActivity
@@ -47,7 +40,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
-class CompanionOverlayService : Service() {
+class CompanionOverlayService : AccessibilityService() {
     private lateinit var windowManager: WindowManager
     private var companionView: CompanionView? = null
     private var bubbleView: View? = null
@@ -68,69 +61,57 @@ class CompanionOverlayService : Service() {
                 Intent.ACTION_SCREEN_ON -> { companionView?.startIdleAnimation(settings.reducedMotion); refreshContext() }
                 Intent.ACTION_CONFIGURATION_CHANGED -> clampToScreen()
                 ACTION_CONTEXT_UPDATED -> refreshContext(true)
-                ACTION_SETTINGS_UPDATED -> refreshContext()
+                ACTION_SETTINGS_UPDATED -> syncVisibility()
+                ACTION_HIDE -> hideCompanion(true)
+                ACTION_RESET_POSITION -> resetPosition()
+                ACTION_PREVIEW -> intent.getStringExtra(EXTRA_STATE)?.let(::previewState)
             }
         }
     }
     private val preferences by lazy { getSharedPreferences(PREFS_NAME, MODE_PRIVATE) }
 
-    override fun onCreate() {
-        super.onCreate()
-        isRunning = true
-        createNotificationChannel()
-        ServiceCompat.startForeground(
-            this,
-            NOTIFICATION_ID,
-            buildNotification(),
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            } else {
-                0
-            },
-        )
-
-        if (!Settings.canDrawOverlays(this)) {
-            stopSelf()
-            return
-        }
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        instance = this
         registerSystemReceiver()
-        showCompanion()
-        refreshContext()
+        syncVisibility()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_HIDE -> serviceScope.launch {
-                app.preferences.updateSettings { it.copy(companionEnabled = false) }
-                stopSelf()
-            }
-            ACTION_PREVIEW -> intent.getStringExtra(EXTRA_STATE)?.let { name ->
-                runCatching { CompanionState.valueOf(name) }.getOrNull()?.let {
-                    previewUntil = android.os.SystemClock.uptimeMillis() + PREVIEW_DURATION_MS
-                    applyState(it)
-                    handler.postDelayed({ refreshContext() }, PREVIEW_DURATION_MS)
-                }
-            }
-            ACTION_CONTEXT_UPDATED -> refreshContext(true)
-            ACTION_SETTINGS_UPDATED -> refreshContext()
-            ACTION_RESET_POSITION -> resetPosition()
+    private fun previewState(name: String) {
+        runCatching { CompanionState.valueOf(name) }.getOrNull()?.let {
+            previewUntil = android.os.SystemClock.uptimeMillis() + PREVIEW_DURATION_MS
+            applyState(it)
+            handler.postDelayed({ refreshContext() }, PREVIEW_DURATION_MS)
         }
-        return START_STICKY
     }
+
+    private fun syncVisibility() = serviceScope.launch {
+        settings = app.preferences.currentSettings()
+        if (settings.companionEnabled) {
+            if (companionView == null) showCompanion()
+            refreshContext()
+        } else hideCompanion()
+    }
+
+    private fun hideCompanion(updatePreference: Boolean = false) {
+        companionView?.let { runCatching { windowManager.removeView(it) } }
+        bubbleView?.let { runCatching { windowManager.removeView(it) } }
+        quickMenuView?.let { runCatching { windowManager.removeView(it) } }
+        companionView = null; bubbleView = null; quickMenuView = null; isRunning = false
+        if (updatePreference) serviceScope.launch { app.preferences.updateSettings { it.copy(companionEnabled = false) } }
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    override fun onInterrupt() = Unit
 
     override fun onDestroy() {
-        companionView?.let { windowManager.removeView(it) }
-        bubbleView?.let { windowManager.removeView(it) }
-        quickMenuView?.let { windowManager.removeView(it) }
+        hideCompanion()
         handler.removeCallbacksAndMessages(null)
         if (receiverRegistered) unregisterReceiver(systemReceiver)
         serviceScope.cancel()
-        companionView = null
-        isRunning = false
+        if (instance === this) instance = null
         super.onDestroy()
     }
-
-    override fun onBind(intent: Intent?): IBinder? = null
 
     private fun showCompanion() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -144,7 +125,7 @@ class CompanionOverlayService : Service() {
         layoutParams = WindowManager.LayoutParams(
             size,
             size,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
@@ -159,6 +140,7 @@ class CompanionOverlayService : Service() {
             windowManager.addView(view, layoutParams)
             view.startIdleAnimation()
         }
+        isRunning = true
     }
 
     private fun registerSystemReceiver() {
@@ -431,11 +413,11 @@ class CompanionOverlayService : Service() {
         }
         fun assistive(label: String, assistiveAction: AssistiveAction) {
             action(label) {
-                if (!AssistiveControlService.perform(assistiveAction)) showMessage("Action isn't available here")
+                if (!perform(assistiveAction)) showMessage("Action isn't available here")
             }
         }
 
-        if (AssistiveControlService.isConnected) {
+        if (instance != null) {
             assistive("←  Back", AssistiveAction.BACK)
             assistive("⌂  Home", AssistiveAction.HOME)
             assistive("▣  Recents", AssistiveAction.RECENTS)
@@ -453,10 +435,10 @@ class CompanionOverlayService : Service() {
             }
         }
         action("Open Ambient") { startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        action("Hide") { serviceScope.launch { app.preferences.updateSettings { it.copy(companionEnabled = false) }; stopSelf() } }
+        action("Hide") { hideCompanion(true) }
 
         val menuWidth = dp(304)
-        val estimatedHeight = dp(if (AssistiveControlService.isConnected) 260 else 116)
+        val estimatedHeight = dp(if (instance != null) 260 else 116)
         val params = overlayParams(menuWidth, WindowManager.LayoutParams.WRAP_CONTENT).apply {
             flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
             x = (companionParams.x - menuWidth / 2).coerceIn(0, (screenSize().x - menuWidth).coerceAtLeast(0))
@@ -475,7 +457,7 @@ class CompanionOverlayService : Service() {
     private fun overlayParams(width: Int, height: Int) = WindowManager.LayoutParams(
         width,
         height,
-        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
         PixelFormat.TRANSLUCENT,
     ).apply { gravity = Gravity.TOP or Gravity.START }
@@ -484,43 +466,6 @@ class CompanionOverlayService : Service() {
         addListener(object : android.animation.AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: android.animation.Animator) = block()
         })
-    }
-
-    private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(R.drawable.ic_stat_ambient)
-        .setContentTitle("Ambient Companion is active")
-        .setContentText("Tap to manage your companion")
-        .setContentIntent(
-            PendingIntent.getActivity(
-                this,
-                0,
-                Intent(this, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            ),
-        )
-        .addAction(
-            android.R.drawable.ic_menu_close_clear_cancel,
-            "Hide",
-            PendingIntent.getService(
-                this,
-                1,
-                Intent(this, CompanionOverlayService::class.java).setAction(ACTION_HIDE),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            ),
-        )
-        .setOngoing(true)
-        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-        .setCategory(NotificationCompat.CATEGORY_SERVICE)
-        .build()
-
-    private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "Floating companion",
-            NotificationManager.IMPORTANCE_LOW,
-        )
-        channel.lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
@@ -535,12 +480,13 @@ class CompanionOverlayService : Service() {
     private fun View.touchSlop(): Int = android.view.ViewConfiguration.get(context).scaledTouchSlop
 
     companion object {
+        @Volatile private var instance: CompanionOverlayService? = null
         @Volatile
         var isRunning: Boolean = false
             private set
 
-        private const val CHANNEL_ID = "companion_overlay"
-        private const val NOTIFICATION_ID = 1001
+        val isConnected: Boolean get() = instance != null
+
         private const val PREFS_NAME = "overlay_position"
         private const val KEY_X = "normalized_x"
         private const val KEY_Y = "normalized_y"
@@ -556,5 +502,19 @@ class CompanionOverlayService : Service() {
         private const val TAP_WINDOW_MS = 360L
         private val contextMessages = listOf("You've got this ✨", "Nice to see you!", "Hope your day's going well")
         private val playfulMessages = listOf("Hey! 😳", "That tickles!", "I'm awake 👀")
+
+        fun perform(action: AssistiveAction): Boolean {
+            val service = instance ?: return false
+            val globalAction = when (action) {
+                AssistiveAction.BACK -> GLOBAL_ACTION_BACK
+                AssistiveAction.HOME -> GLOBAL_ACTION_HOME
+                AssistiveAction.RECENTS -> GLOBAL_ACTION_RECENTS
+                AssistiveAction.NOTIFICATIONS -> GLOBAL_ACTION_NOTIFICATIONS
+                AssistiveAction.QUICK_SETTINGS -> GLOBAL_ACTION_QUICK_SETTINGS
+                AssistiveAction.LOCK_SCREEN -> GLOBAL_ACTION_LOCK_SCREEN
+                AssistiveAction.POWER_DIALOG -> GLOBAL_ACTION_POWER_DIALOG
+            }
+            return service.performGlobalAction(globalAction)
+        }
     }
 }
