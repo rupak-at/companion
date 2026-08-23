@@ -176,7 +176,7 @@ class CompanionOverlayService : Service() {
     private fun refreshContext(force: Boolean = false) {
         serviceScope.launch {
             settings = app.preferences.currentSettings()
-            resizeCompanion(settings.companionSize.dp)
+            resizeCompanion(settings.companionSizeDp)
             companionView?.configureAppearance(
                 settings.companionAppearance,
                 settings.selectedEmoji,

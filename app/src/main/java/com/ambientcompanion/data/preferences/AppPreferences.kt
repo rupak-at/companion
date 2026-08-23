@@ -28,7 +28,7 @@ data class UserSettings(
     val automaticMessages: Boolean = true,
     val weatherEnabled: Boolean = true,
     val reducedMotion: Boolean = false,
-    val companionSize: CompanionSize = CompanionSize.MEDIUM,
+    val companionSizeDp: Int = CompanionSize.MEDIUM.dp,
     val companionAppearance: CompanionAppearance = CompanionAppearance.AMBIENT,
     val selectedEmoji: String = "😊",
     val idleOpacity: Float = 0.72f,
@@ -56,7 +56,9 @@ class AppPreferences(private val context: Context) {
             automaticMessages = values[AUTOMATIC_MESSAGES] ?: true,
             weatherEnabled = values[WEATHER_ENABLED] ?: true,
             reducedMotion = values[REDUCED_MOTION] ?: false,
-            companionSize = CompanionSize.entries.getOrElse(values[COMPANION_SIZE] ?: 1) { CompanionSize.MEDIUM },
+            companionSizeDp = (values[COMPANION_SIZE_DP]
+                ?: CompanionSize.entries.getOrElse(values[COMPANION_SIZE] ?: 1) { CompanionSize.MEDIUM }.dp)
+                .coerceIn(MIN_COMPANION_SIZE_DP, MAX_COMPANION_SIZE_DP),
             companionAppearance = values[COMPANION_APPEARANCE]
                 ?.let { name -> runCatching { CompanionAppearance.valueOf(name) }.getOrNull() }
                 ?: CompanionAppearance.AMBIENT,
@@ -80,7 +82,7 @@ class AppPreferences(private val context: Context) {
                 it[AUTOMATIC_MESSAGES] = next.automaticMessages
                 it[WEATHER_ENABLED] = next.weatherEnabled
                 it[REDUCED_MOTION] = next.reducedMotion
-                it[COMPANION_SIZE] = next.companionSize.ordinal
+                it[COMPANION_SIZE_DP] = next.companionSizeDp.coerceIn(MIN_COMPANION_SIZE_DP, MAX_COMPANION_SIZE_DP)
                 it[COMPANION_APPEARANCE] = next.companionAppearance.name
                 it[SELECTED_EMOJI] = next.selectedEmoji
                 it[IDLE_OPACITY] = next.idleOpacity.coerceIn(0.35f, 1f)
@@ -136,6 +138,7 @@ class AppPreferences(private val context: Context) {
         private val WEATHER_ENABLED = booleanPreferencesKey("weather_enabled")
         private val REDUCED_MOTION = booleanPreferencesKey("reduced_motion")
         private val COMPANION_SIZE = intPreferencesKey("companion_size")
+        private val COMPANION_SIZE_DP = intPreferencesKey("companion_size_dp")
         private val COMPANION_APPEARANCE = stringPreferencesKey("companion_appearance")
         private val SELECTED_EMOJI = stringPreferencesKey("selected_emoji")
         private val IDLE_OPACITY = floatPreferencesKey("idle_opacity")
@@ -150,5 +153,7 @@ class AppPreferences(private val context: Context) {
         private val CACHE_FETCHED_AT = longPreferencesKey("cache_fetched_at")
         private val LAST_MESSAGE_ID = stringPreferencesKey("last_message_id")
         private val LAST_MESSAGE_AT = longPreferencesKey("last_message_at")
+        const val MIN_COMPANION_SIZE_DP = 40
+        const val MAX_COMPANION_SIZE_DP = 160
     }
 }

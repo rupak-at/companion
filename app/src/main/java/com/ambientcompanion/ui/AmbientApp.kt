@@ -23,8 +23,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ambientcompanion.data.preferences.CompanionSize
 import com.ambientcompanion.data.preferences.CompanionAppearance
+import com.ambientcompanion.data.preferences.AppPreferences
 import com.ambientcompanion.data.preferences.UserSettings
 import com.ambientcompanion.domain.model.CompanionState
 import com.ambientcompanion.domain.repository.ContextSnapshot
@@ -187,7 +187,7 @@ private fun Customize(
             item { EmojiPicker(settings.selectedEmoji) { emoji -> update { it.copy(selectedEmoji = emoji) } } }
         }
         item { SectionLabel("DISPLAY") }
-        item { ActionCard("Companion size", settings.companionSize.name.lowercase().replaceFirstChar(Char::uppercase)) { val next = CompanionSize.entries[(settings.companionSize.ordinal + 1) % 3]; update { it.copy(companionSize = next) } } }
+        item { SizeControl(settings.companionSizeDp) { value -> update { it.copy(companionSizeDp = value) } } }
         item { OpacityControl(settings.idleOpacity) { value -> update { it.copy(idleOpacity = value) } } }
         item { ToggleCard("Snap to screen edge", "Turn off to leave it anywhere", settings.edgeSnapEnabled) { value -> update { it.copy(edgeSnapEnabled = value) } } }
     }
@@ -209,7 +209,7 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         if (settings.companionAppearance == CompanionAppearance.EMOJI) {
             item { EmojiPicker(settings.selectedEmoji) { emoji -> update { it.copy(selectedEmoji = emoji) } } }
         }
-        item { ActionCard("Size", settings.companionSize.name.lowercase().replaceFirstChar(Char::uppercase)) { val next = CompanionSize.entries[(settings.companionSize.ordinal + 1) % 3]; update { it.copy(companionSize = next) } } }
+        item { SizeControl(settings.companionSizeDp) { value -> update { it.copy(companionSizeDp = value) } } }
         item { OpacityControl(settings.idleOpacity) { value -> update { it.copy(idleOpacity = value) } } }
         item { ToggleCard("Snap to screen edge", "Turn off for free positioning", settings.edgeSnapEnabled) { value -> update { it.copy(edgeSnapEnabled = value) } } }
         item { ActionCard("Location", if (settings.manualLatitude == null) "Automatic · tap for Kathmandu" else "Kathmandu · tap for automatic") { update { if (it.manualLatitude == null) it.copy(manualLatitude = 27.7172, manualLongitude = 85.3240) else it.copy(manualLatitude = null, manualLongitude = null) }; refresh() } }
@@ -274,6 +274,27 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
 @Composable private fun OpacityControl(value: Float, update: (Float) -> Unit) = PremiumCard {
     SettingRow("Inactive opacity", "Fades to ${(value * 100).roundToInt()}% after 2.5 seconds") { Text("${(value * 100).roundToInt()}%", color = Aubergine, fontWeight = FontWeight.Bold) }
     Slider(value = value, onValueChange = update, valueRange = .35f..1f, steps = 12, colors = SliderDefaults.colors(thumbColor = Aubergine, activeTrackColor = Aubergine, inactiveTrackColor = Color(0xFFE4DCE1)))
+}
+@Composable private fun SizeControl(value: Int, update: (Int) -> Unit) = PremiumCard {
+    val label = when {
+        value <= 60 -> "Very small"
+        value <= 84 -> "Small"
+        value <= 112 -> "Medium"
+        value <= 140 -> "Large"
+        else -> "Very large"
+    }
+    SettingRow("Floating icon size", "$label · ${value}dp") { Text("${value}dp", color = Aubergine, fontWeight = FontWeight.Bold) }
+    Slider(
+        value = value.toFloat(),
+        onValueChange = { update(it.roundToInt()) },
+        valueRange = AppPreferences.MIN_COMPANION_SIZE_DP.toFloat()..AppPreferences.MAX_COMPANION_SIZE_DP.toFloat(),
+        steps = 23,
+        colors = SliderDefaults.colors(thumbColor = Aubergine, activeTrackColor = Aubergine, inactiveTrackColor = Color(0xFFE4DCE1)),
+    )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text("Very small", color = MutedInk, fontSize = 11.sp)
+        Text("Very large", color = MutedInk, fontSize = 11.sp)
+    }
 }
 @Composable private fun ActionCard(title: String, subtitle: String, action: () -> Unit) = Surface(Modifier.fillMaxWidth().clickable(onClick = action), color = Color.White.copy(alpha = .88f), shape = RoundedCornerShape(24.dp)) { Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, color = Ink, fontWeight = FontWeight.SemiBold); Text(subtitle, color = MutedInk, fontSize = 13.sp) }; Text("›", color = Aubergine, fontSize = 24.sp) } }
 @Composable private fun SectionLabel(text: String) = Text(text, color = AmberDeep, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp, modifier = Modifier.padding(top = 12.dp))
