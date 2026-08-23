@@ -50,6 +50,22 @@ The complete V1 feature set is implemented:
 - Screen-off animation suspension and WorkManager background refresh
 - Home, settings, all-state preview, and hidden developer override screens
 - Small, medium, and large companion sizes plus message/weather/motion controls
+- Optional static emoji companion with a curated emoji picker
+- Adjustable inactive opacity with automatic fade and touch-to-wake behavior
+- Public lock-screen notification with a dedicated Ambient status icon
+- Optional Quick Settings tile for showing or hiding the companion from system controls
+
+## Android system UI behavior
+
+The companion floats over the launcher and ordinary applications after the user grants
+overlay permission. Android intentionally prevents third-party application overlays from
+drawing above the secure lock screen, notification shade, permission dialogs, and other
+protected system surfaces. Ambient does not misuse Accessibility Services to bypass that
+security boundary.
+
+In protected areas, Ambient remains accessible through its public foreground-service
+notification and the optional Quick Settings tile. Lock-screen visibility still follows
+the notification privacy choices configured by the device owner.
 
 See [V1_ACCEPTANCE.md](V1_ACCEPTANCE.md) for the verification matrix. The code-level
 acceptance suite passes; physical-device and battery checks remain release QA because no

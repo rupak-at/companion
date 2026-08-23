@@ -33,6 +33,10 @@ fallback behavior, supported-state coverage, and non-repeating message selection
 - [x] WorkManager refresh and active-overlay update broadcast
 - [x] Screen-off animation pause and screen-on context reevaluation
 - [x] Settings for messages, automatic messages, weather, size, and reduced motion
+- [x] Static emoji appearance with curated emoji selection
+- [x] Configurable 35–100% inactive opacity and automatic idle fade
+- [x] Dedicated public lock-screen notification icon
+- [x] Optional Android Quick Settings show/hide tile
 - [x] All-state preview and hidden developer override screen
 - [x] Companion state survives normal app reopening
 
@@ -54,6 +58,9 @@ cannot be certified by JVM tests or static lint alone.
 - [ ] Observe a full-day weather/time transition cycle
 - [ ] Measure idle battery use over 24 hours
 - [ ] Confirm animation readability at 68dp, 84dp, and 104dp
+- [ ] Confirm selected emoji glyphs render correctly on each target device and OEM font
+- [ ] Confirm lock-screen notification visibility under the device owner's privacy settings
+- [ ] Add and exercise the Quick Settings tile on Android 9 and a current Android device
 - [ ] Complete a crash-free daily-use soak test
 
 The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
