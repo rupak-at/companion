@@ -1,7 +1,6 @@
 package com.ambientcompanion
 
 import android.Manifest
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.ComponentName
 import android.app.StatusBarManager
@@ -109,17 +108,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openAccessibilityServiceSettings() {
-        val service = ComponentName(this, AssistiveControlService::class.java)
-        val detailsIntent = Intent(ACTION_ACCESSIBILITY_DETAILS_SETTINGS).apply {
-            putExtra(Intent.EXTRA_COMPONENT_NAME, service)
-        }
-        try {
-            startActivity(detailsIntent)
-        } catch (_: ActivityNotFoundException) {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        } catch (_: SecurityException) {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
+        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 
     private fun toggleCompanion(enabled: Boolean) {
@@ -177,8 +166,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    companion object {
-        private const val ACTION_ACCESSIBILITY_DETAILS_SETTINGS =
-            "android.settings.ACCESSIBILITY_DETAILS_SETTINGS"
-    }
 }

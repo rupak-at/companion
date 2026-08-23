@@ -106,7 +106,7 @@ private fun Onboarding(
         "Morning energy, evening calm, and a sleepy face when the day winds down.",
         "Approximate location helps Ambient notice rain, warmth, and daylight. Your location history is never stored.",
         "Allow Ambient to appear over your home screen and apps. You can hide it instantly at any time.",
-        "Enable Ambient's accessibility service for Back, Home, Recents, screenshot, lock screen, and other controls. Ambient never reads or stores screen content.",
+        "In Accessibility, open Ambient Companion controls and turn on its main switch. Leave Shortcut off unless you want Android's optional quick toggle.",
         "Your companion is ready to say hello.",
     )
     PremiumBackground {
@@ -123,7 +123,7 @@ private fun Onboarding(
                     OutlinedButton(onClick = { step++ }, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) { Text("Choose a city later", color = Ink) }
                 }
                 3 -> PrimaryButton(if (overlayAllowed) "Continue" else "Allow floating companion") { if (overlayAllowed) step++ else requestOverlay() }
-                4 -> PrimaryButton(if (accessibilityAllowed) "Continue" else "Enable accessibility controls") { if (accessibilityAllowed) step++ else requestAccessibility() }
+                4 -> PrimaryButton(if (accessibilityAllowed) "Continue" else "Find Ambient Companion controls") { if (accessibilityAllowed) step++ else requestAccessibility() }
                 5 -> PrimaryButton("Meet my companion", complete)
                 else -> PrimaryButton("Continue") { step++ }
             }
@@ -152,8 +152,8 @@ private fun Home(
             Spacer(Modifier.height(14.dp))
             if (!accessibilityEnabled) {
                 ActionCard(
-                    "Enable accessibility controls",
-                    "Required for Back, Home, screenshot, lock screen and more",
+                    "Enable Ambient Companion controls",
+                    "Open Accessibility, select this service, then turn on its main switch",
                     openAccessibilitySettings,
                 )
                 Spacer(Modifier.height(14.dp))
