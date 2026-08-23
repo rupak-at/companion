@@ -282,5 +282,34 @@ private fun messageFor(state: CompanionState) = when (state) { CompanionState.DA
 private fun stateColors(state: CompanionState) = when (state) { CompanionState.NIGHT_CLEAR, CompanionState.NIGHT_CLOUDY, CompanionState.NIGHT_RAIN, CompanionState.NIGHT_SLEEP -> listOf(Color(0xFFD9D1FF), Color(0xFF8068B2)); CompanionState.MORNING_RAIN, CompanionState.DAY_RAIN, CompanionState.EVENING_RAIN, CompanionState.STORM -> listOf(Color(0xFFC9E7F2), Color(0xFF6E93A8)); CompanionState.COLD, CompanionState.SNOW, CompanionState.FOG -> listOf(Color(0xFFE9F5F6), Color(0xFF9FC7CA)); CompanionState.EVENING_CLEAR, CompanionState.EVENING_CLOUDY -> listOf(Color(0xFFFFD4BC), Color(0xFFC98187)); else -> listOf(Color(0xFFFFE8B7), Amber) }
 private fun faceFor(state: CompanionState) = when (state) { CompanionState.NIGHT_SLEEP -> "− ᴗ −"; CompanionState.STORM -> "• ﹏ •"; CompanionState.DAY_HOT -> "• _ •"; else -> "• ᴗ •" }
 private fun CompanionState.displayName() = name.lowercase().split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
-private val emojiChoices = listOf("😊", "😀", "😂", "😍", "😎", "🥰", "😴", "🤓", "🥳", "😇", "🤩", "😜", "🥶", "🥵", "🤡", "👻", "💩", "💀")
+private val emojiChoices = listOf(
+    // Happy and cheerful
+    "😀", "😃", "😄", "😁", "😆", "😅",
+    "😂", "🤣", "😊", "😇", "🙂", "🙃",
+    "😉", "😌", "😍", "🥰", "😘", "😗",
+    "😙", "😚", "🤗", "🤩", "🥳", "😎",
+
+    // Playful and silly
+    "😋", "😛", "😜", "🤪", "😝", "🤑",
+    "🤭", "🫢", "🫣", "🤫", "🤔", "🫡",
+    "🤐", "🤨", "😐", "😑", "😶", "🫥",
+    "😏", "😒", "🙄", "😬", "🤥", "🤓",
+
+    // Sleepy, emotional, and worried
+    "😴", "🤤", "😪", "😮‍💨", "😔", "😞",
+    "😟", "😕", "🙁", "☹️", "😣", "😖",
+    "😫", "😩", "🥺", "😢", "😭", "😤",
+    "😠", "😡", "🤬", "🤯", "😳", "🥹",
+
+    // Surprised and unwell
+    "😮", "😯", "😲", "😱", "😨", "😰",
+    "😥", "😓", "🤢", "🤮", "🤧", "😷",
+    "🤒", "🤕", "🥴", "😵", "😵‍💫", "🫨",
+    "🥶", "🥵", "😶‍🌫️", "😈", "👿", "💀",
+
+    // Characters and creatures
+    "🤠", "🥸", "🤡", "👻", "👽", "🤖",
+    "💩", "😺", "😸", "😹", "😻", "😼",
+    "🙈", "🙉", "🙊", "🐶", "🐱", "🐼",
+)
 private val Porcelain = Color(0xFFFFF8F2); private val Ink = Color(0xFF302832); private val MutedInk = Color(0xFF786F77); private val Aubergine = Color(0xFF68486D); private val Amber = Color(0xFFFFBF67); private val AmberDeep = Color(0xFFAA6D2A)
