@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore by preferencesDataStore("ambient_preferences")
 
 enum class CompanionSize(val dp: Int) { SMALL(68), MEDIUM(84), LARGE(104) }
+enum class CompanionAppearance { AMBIENT, EMOJI }
 
 data class UserSettings(
     val onboardingComplete: Boolean = false,
@@ -26,6 +27,9 @@ data class UserSettings(
     val weatherEnabled: Boolean = true,
     val reducedMotion: Boolean = false,
     val companionSize: CompanionSize = CompanionSize.MEDIUM,
+    val companionAppearance: CompanionAppearance = CompanionAppearance.AMBIENT,
+    val selectedEmoji: String = "😊",
+    val idleOpacity: Float = 0.72f,
     val manualLatitude: Double? = null,
     val manualLongitude: Double? = null,
 )
@@ -49,6 +53,11 @@ class AppPreferences(private val context: Context) {
             weatherEnabled = values[WEATHER_ENABLED] ?: true,
             reducedMotion = values[REDUCED_MOTION] ?: false,
             companionSize = CompanionSize.entries.getOrElse(values[COMPANION_SIZE] ?: 1) { CompanionSize.MEDIUM },
+            companionAppearance = values[COMPANION_APPEARANCE]
+                ?.let { name -> runCatching { CompanionAppearance.valueOf(name) }.getOrNull() }
+                ?: CompanionAppearance.AMBIENT,
+            selectedEmoji = values[SELECTED_EMOJI] ?: "😊",
+            idleOpacity = (values[IDLE_OPACITY] ?: 0.72f).coerceIn(0.35f, 1f),
             manualLatitude = values[MANUAL_LATITUDE],
             manualLongitude = values[MANUAL_LONGITUDE],
         )
@@ -66,6 +75,9 @@ class AppPreferences(private val context: Context) {
             it[WEATHER_ENABLED] = next.weatherEnabled
             it[REDUCED_MOTION] = next.reducedMotion
             it[COMPANION_SIZE] = next.companionSize.ordinal
+            it[COMPANION_APPEARANCE] = next.companionAppearance.name
+            it[SELECTED_EMOJI] = next.selectedEmoji
+            it[IDLE_OPACITY] = next.idleOpacity.coerceIn(0.35f, 1f)
             next.manualLatitude?.let { value -> it[MANUAL_LATITUDE] = value } ?: it.remove(MANUAL_LATITUDE)
             next.manualLongitude?.let { value -> it[MANUAL_LONGITUDE] = value } ?: it.remove(MANUAL_LONGITUDE)
         }
@@ -116,6 +128,9 @@ class AppPreferences(private val context: Context) {
         private val WEATHER_ENABLED = booleanPreferencesKey("weather_enabled")
         private val REDUCED_MOTION = booleanPreferencesKey("reduced_motion")
         private val COMPANION_SIZE = intPreferencesKey("companion_size")
+        private val COMPANION_APPEARANCE = stringPreferencesKey("companion_appearance")
+        private val SELECTED_EMOJI = stringPreferencesKey("selected_emoji")
+        private val IDLE_OPACITY = floatPreferencesKey("idle_opacity")
         private val MANUAL_LATITUDE = doublePreferencesKey("manual_latitude")
         private val MANUAL_LONGITUDE = doublePreferencesKey("manual_longitude")
         private val CACHE_CONDITION = stringPreferencesKey("cache_condition")
