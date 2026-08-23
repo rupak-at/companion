@@ -13,6 +13,8 @@ import com.ambientcompanion.domain.model.WeatherCondition
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 private val Context.dataStore by preferencesDataStore("ambient_preferences")
 
@@ -44,6 +46,7 @@ data class CachedWeather(
 )
 
 class AppPreferences(private val context: Context) {
+    private val updateMutex = Mutex()
     val settings: Flow<UserSettings> = context.dataStore.data.map { values ->
         UserSettings(
             onboardingComplete = values[ONBOARDING_COMPLETE] ?: false,
@@ -66,20 +69,22 @@ class AppPreferences(private val context: Context) {
     suspend fun currentSettings(): UserSettings = settings.first()
 
     suspend fun updateSettings(transform: (UserSettings) -> UserSettings) {
-        val next = transform(currentSettings())
-        context.dataStore.edit {
-            it[ONBOARDING_COMPLETE] = next.onboardingComplete
-            it[COMPANION_ENABLED] = next.companionEnabled
-            it[MESSAGES_ENABLED] = next.messagesEnabled
-            it[AUTOMATIC_MESSAGES] = next.automaticMessages
-            it[WEATHER_ENABLED] = next.weatherEnabled
-            it[REDUCED_MOTION] = next.reducedMotion
-            it[COMPANION_SIZE] = next.companionSize.ordinal
-            it[COMPANION_APPEARANCE] = next.companionAppearance.name
-            it[SELECTED_EMOJI] = next.selectedEmoji
-            it[IDLE_OPACITY] = next.idleOpacity.coerceIn(0.35f, 1f)
-            next.manualLatitude?.let { value -> it[MANUAL_LATITUDE] = value } ?: it.remove(MANUAL_LATITUDE)
-            next.manualLongitude?.let { value -> it[MANUAL_LONGITUDE] = value } ?: it.remove(MANUAL_LONGITUDE)
+        updateMutex.withLock {
+            val next = transform(currentSettings())
+            context.dataStore.edit {
+                it[ONBOARDING_COMPLETE] = next.onboardingComplete
+                it[COMPANION_ENABLED] = next.companionEnabled
+                it[MESSAGES_ENABLED] = next.messagesEnabled
+                it[AUTOMATIC_MESSAGES] = next.automaticMessages
+                it[WEATHER_ENABLED] = next.weatherEnabled
+                it[REDUCED_MOTION] = next.reducedMotion
+                it[COMPANION_SIZE] = next.companionSize.ordinal
+                it[COMPANION_APPEARANCE] = next.companionAppearance.name
+                it[SELECTED_EMOJI] = next.selectedEmoji
+                it[IDLE_OPACITY] = next.idleOpacity.coerceIn(0.35f, 1f)
+                next.manualLatitude?.let { value -> it[MANUAL_LATITUDE] = value } ?: it.remove(MANUAL_LATITUDE)
+                next.manualLongitude?.let { value -> it[MANUAL_LONGITUDE] = value } ?: it.remove(MANUAL_LONGITUDE)
+            }
         }
     }
 

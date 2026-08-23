@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val app get() = application as AmbientApplication
     private var settingsState = androidx.compose.runtime.mutableStateOf(UserSettings())
+    private var settingsLoadedState = androidx.compose.runtime.mutableStateOf(false)
     private var snapshotState = androidx.compose.runtime.mutableStateOf<ContextSnapshot?>(null)
     private var screenState = androidx.compose.runtime.mutableStateOf(AppScreen.HOME)
     private var overlayPermissionState = androidx.compose.runtime.mutableStateOf(false)
@@ -43,6 +44,7 @@ class MainActivity : ComponentActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 app.preferences.settings.collect { settings ->
                     settingsState.value = settings
+                    settingsLoadedState.value = true
                     if (settings.companionEnabled && Settings.canDrawOverlays(this@MainActivity) && !CompanionOverlayService.isRunning) {
                         ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, CompanionOverlayService::class.java))
                     }
@@ -53,6 +55,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             AmbientApp(
                 settings = settingsState.value,
+                settingsLoaded = settingsLoadedState.value,
                 snapshot = snapshotState.value,
                 screen = screenState.value,
                 hasOverlayPermission = overlayPermissionState.value,
@@ -60,10 +63,7 @@ class MainActivity : ComponentActivity() {
                 onNavigate = { screenState.value = it },
                 onRequestLocation = { locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
                 onRequestOverlay = ::openOverlaySettings,
-                onCompleteOnboarding = {
-                    updateSettings { it.copy(onboardingComplete = true) }
-                    toggleCompanion(true)
-                },
+                onCompleteOnboarding = ::completeOnboarding,
                 onToggleCompanion = ::toggleCompanion,
                 onRefresh = { refreshContext(true) },
                 onUpdateSettings = ::updateSettings,
@@ -102,6 +102,19 @@ class MainActivity : ComponentActivity() {
         val intent = Intent(this, CompanionOverlayService::class.java)
         if (enabled) ContextCompat.startForegroundService(this, intent) else stopService(intent)
         updateSettings { it.copy(companionEnabled = enabled) }
+    }
+
+    private fun completeOnboarding() {
+        lifecycleScope.launch {
+            app.preferences.updateSettings { it.copy(onboardingComplete = true, companionEnabled = true) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            ContextCompat.startForegroundService(
+                this@MainActivity,
+                Intent(this@MainActivity, CompanionOverlayService::class.java),
+            )
+        }
     }
 
     private fun refreshContext(force: Boolean = false) {

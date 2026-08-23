@@ -35,6 +35,7 @@ enum class AppScreen { HOME, CUSTOMIZE, SETTINGS, PREVIEW, DEBUG }
 @Composable
 fun AmbientApp(
     settings: UserSettings,
+    settingsLoaded: Boolean,
     snapshot: ContextSnapshot?,
     screen: AppScreen,
     hasOverlayPermission: Boolean,
@@ -51,7 +52,9 @@ fun AmbientApp(
     onPreviewState: (CompanionState) -> Unit,
 ) {
     MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(primary = Aubergine, surface = Porcelain)) {
-        if (!settings.onboardingComplete) {
+        if (!settingsLoaded) {
+            LaunchScreen()
+        } else if (!settings.onboardingComplete) {
             Onboarding(onRequestLocation, onRequestOverlay, hasOverlayPermission, onCompleteOnboarding)
         } else when (screen) {
             AppScreen.HOME -> Home(settings, snapshot, overlayRunning, onToggleCompanion, onRefresh, onNavigate)
@@ -59,6 +62,21 @@ fun AmbientApp(
             AppScreen.SETTINGS -> Settings(settings, onToggleCompanion, onUpdateSettings, onResetPosition, onAddQuickTile, onRefresh, onNavigate)
             AppScreen.PREVIEW -> Preview(onPreviewState, onNavigate)
             AppScreen.DEBUG -> Debug(onPreviewState, onNavigate)
+        }
+    }
+}
+
+@Composable
+private fun LaunchScreen() {
+    PremiumBackground {
+        Column(
+            Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            BrandMark()
+            Spacer(Modifier.height(18.dp))
+            Text("Loading your companion…", color = MutedInk, fontSize = 14.sp)
         }
     }
 }
