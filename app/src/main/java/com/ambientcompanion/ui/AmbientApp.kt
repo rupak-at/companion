@@ -188,6 +188,7 @@ private fun Customize(
         item { SectionLabel("DISPLAY") }
         item { ActionCard("Companion size", settings.companionSize.name.lowercase().replaceFirstChar(Char::uppercase)) { val next = CompanionSize.entries[(settings.companionSize.ordinal + 1) % 3]; update { it.copy(companionSize = next) } } }
         item { OpacityControl(settings.idleOpacity) { value -> update { it.copy(idleOpacity = value) } } }
+        item { ToggleCard("Snap to screen edge", "Turn off to leave it anywhere", settings.edgeSnapEnabled) { value -> update { it.copy(edgeSnapEnabled = value) } } }
     }
 }
 
@@ -208,6 +209,7 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         }
         item { ActionCard("Size", settings.companionSize.name.lowercase().replaceFirstChar(Char::uppercase)) { val next = CompanionSize.entries[(settings.companionSize.ordinal + 1) % 3]; update { it.copy(companionSize = next) } } }
         item { OpacityControl(settings.idleOpacity) { value -> update { it.copy(idleOpacity = value) } } }
+        item { ToggleCard("Snap to screen edge", "Turn off for free positioning", settings.edgeSnapEnabled) { value -> update { it.copy(edgeSnapEnabled = value) } } }
         item { ActionCard("Location", if (settings.manualLatitude == null) "Automatic · tap for Kathmandu" else "Kathmandu · tap for automatic") { update { if (it.manualLatitude == null) it.copy(manualLatitude = 27.7172, manualLongitude = 85.3240) else it.copy(manualLatitude = null, manualLongitude = null) }; refresh() } }
         item { ActionCard("Reset position", "Return to the right edge", reset) }
         item { ActionCard("Quick Settings button", "Add a system-area show/hide control", addQuickTile) }

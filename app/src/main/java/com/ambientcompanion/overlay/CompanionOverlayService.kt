@@ -36,6 +36,7 @@ import com.ambientcompanion.R
 import com.ambientcompanion.data.preferences.UserSettings
 import com.ambientcompanion.domain.engine.MessageSelector
 import com.ambientcompanion.domain.model.CompanionState
+import com.ambientcompanion.screenshot.ScreenshotPermissionActivity
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
@@ -237,26 +238,34 @@ class CompanionOverlayService : Service() {
         var touchX = 0f
         var touchY = 0f
         var dragged = false
+        var longPressed = false
+        var tapCount = 0
+        lateinit var tapAction: Runnable
+        fun runTapAction() {
+            when (tapCount) {
+                1 -> {
+                    view.performClick()
+                    if (settings.messagesEnabled) serviceScope.launch {
+                        val (lastId) = app.preferences.lastMessage()
+                        val selected = messageSelector.select(currentState, lastId)
+                        showMessage(selected.text)
+                        app.preferences.saveLastMessage(selected.id, System.currentTimeMillis())
+                    }
+                }
+                2 -> {
+                    (view as CompanionView).playSurprisedReaction()
+                    showMessage(playfulMessages.random())
+                }
+                3 -> requestScreenshot()
+            }
+            tapCount = 0
+        }
+        tapAction = Runnable(::runTapAction)
         val gestures = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(event: MotionEvent): Boolean = true
 
-            override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
-                if (settings.messagesEnabled) serviceScope.launch {
-                    val (lastId) = app.preferences.lastMessage()
-                    val selected = messageSelector.select(currentState, lastId)
-                    showMessage(selected.text)
-                    app.preferences.saveLastMessage(selected.id, System.currentTimeMillis())
-                }
-                return true
-            }
-
-            override fun onDoubleTap(event: MotionEvent): Boolean {
-                (view as CompanionView).playSurprisedReaction()
-                showMessage(playfulMessages.random())
-                return true
-            }
-
             override fun onLongPress(event: MotionEvent) {
+                longPressed = true
                 showQuickMenu()
             }
         })
@@ -271,6 +280,7 @@ class CompanionOverlayService : Service() {
                     touchX = event.rawX
                     touchY = event.rawY
                     dragged = false
+                    longPressed = false
                     (view as CompanionView).wake()
                     view.pauseAnimation()
                     true
@@ -289,13 +299,29 @@ class CompanionOverlayService : Service() {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     (view as CompanionView).setDragging(false)
-                    if (!dragged && event.actionMasked == MotionEvent.ACTION_UP) view.performClick()
-                    if (dragged) snapToNearestEdge(view) else view.startIdleAnimation()
+                    if (!dragged && !longPressed && event.actionMasked == MotionEvent.ACTION_UP) {
+                        tapCount++
+                        handler.removeCallbacks(tapAction)
+                        if (tapCount >= 3) runTapAction() else handler.postDelayed(tapAction, TAP_WINDOW_MS)
+                    }
+                    if (dragged) {
+                        if (settings.edgeSnapEnabled) snapToNearestEdge(view) else savePosition(view)
+                    } else {
+                        view.startIdleAnimation()
+                    }
                     true
                 }
                 else -> false
             }
         }
+    }
+
+    private fun requestScreenshot() {
+        showMessage("Preparing screenshot…")
+        startActivity(
+            Intent(this, ScreenshotPermissionActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     private fun snapToNearestEdge(view: View) {
@@ -321,6 +347,18 @@ class CompanionOverlayService : Service() {
             }
             start()
         }
+    }
+
+    private fun savePosition(view: CompanionView) {
+        val params = layoutParams ?: return
+        val screen = screenSize()
+        val maxX = (screen.x - view.width).coerceAtLeast(0)
+        val maxY = (screen.y - view.height).coerceAtLeast(0)
+        preferences.edit {
+            putFloat(KEY_X, if (maxX == 0) 0f else params.x.toFloat() / maxX)
+            putFloat(KEY_Y, if (maxY == 0) 0f else params.y.toFloat() / maxY)
+        }
+        view.startIdleAnimation(settings.reducedMotion)
     }
 
     private fun showMessage(message: String) {
@@ -490,6 +528,7 @@ class CompanionOverlayService : Service() {
         const val ACTION_RESET_POSITION = "com.ambientcompanion.action.RESET_POSITION"
         private const val AUTO_MESSAGE_INTERVAL_MS = 60 * 60 * 1000L
         private const val PREVIEW_DURATION_MS = 10_000L
+        private const val TAP_WINDOW_MS = 360L
         private val contextMessages = listOf("You've got this ✨", "Nice to see you!", "Hope your day's going well")
         private val playfulMessages = listOf("Hey! 😳", "That tickles!", "I'm awake 👀")
     }

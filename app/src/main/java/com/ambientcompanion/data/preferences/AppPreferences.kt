@@ -32,6 +32,7 @@ data class UserSettings(
     val companionAppearance: CompanionAppearance = CompanionAppearance.AMBIENT,
     val selectedEmoji: String = "😊",
     val idleOpacity: Float = 0.72f,
+    val edgeSnapEnabled: Boolean = false,
     val manualLatitude: Double? = null,
     val manualLongitude: Double? = null,
 )
@@ -61,6 +62,7 @@ class AppPreferences(private val context: Context) {
                 ?: CompanionAppearance.AMBIENT,
             selectedEmoji = values[SELECTED_EMOJI] ?: "😊",
             idleOpacity = (values[IDLE_OPACITY] ?: 0.72f).coerceIn(0.35f, 1f),
+            edgeSnapEnabled = values[EDGE_SNAP_ENABLED] ?: false,
             manualLatitude = values[MANUAL_LATITUDE],
             manualLongitude = values[MANUAL_LONGITUDE],
         )
@@ -82,6 +84,7 @@ class AppPreferences(private val context: Context) {
                 it[COMPANION_APPEARANCE] = next.companionAppearance.name
                 it[SELECTED_EMOJI] = next.selectedEmoji
                 it[IDLE_OPACITY] = next.idleOpacity.coerceIn(0.35f, 1f)
+                it[EDGE_SNAP_ENABLED] = next.edgeSnapEnabled
                 next.manualLatitude?.let { value -> it[MANUAL_LATITUDE] = value } ?: it.remove(MANUAL_LATITUDE)
                 next.manualLongitude?.let { value -> it[MANUAL_LONGITUDE] = value } ?: it.remove(MANUAL_LONGITUDE)
             }
@@ -136,6 +139,7 @@ class AppPreferences(private val context: Context) {
         private val COMPANION_APPEARANCE = stringPreferencesKey("companion_appearance")
         private val SELECTED_EMOJI = stringPreferencesKey("selected_emoji")
         private val IDLE_OPACITY = floatPreferencesKey("idle_opacity")
+        private val EDGE_SNAP_ENABLED = booleanPreferencesKey("edge_snap_enabled")
         private val MANUAL_LATITUDE = doublePreferencesKey("manual_latitude")
         private val MANUAL_LONGITUDE = doublePreferencesKey("manual_longitude")
         private val CACHE_CONDITION = stringPreferencesKey("cache_condition")
