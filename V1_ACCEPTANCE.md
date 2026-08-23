@@ -18,6 +18,7 @@ fallback behavior, supported-state coverage, and non-repeating message selection
 - [x] Overlay enable and disable controls
 - [x] Foreground service with persistent notification and Hide action
 - [x] Draggable companion with smooth edge snapping
+- [x] Free positioning anywhere inside screen bounds with optional edge snapping
 - [x] Normalized saved position, live reset, screen clamping, and rotation correction
 - [x] Idle, tap, double-tap, drag, and state-transition reactions
 - [x] Long-press quick actions
@@ -37,6 +38,7 @@ fallback behavior, supported-state coverage, and non-repeating message selection
 - [x] Configurable 35–100% inactive opacity and automatic idle fade
 - [x] Dedicated public lock-screen notification icon
 - [x] Optional Android Quick Settings show/hide tile
+- [x] Triple-tap MediaProjection screenshot with explicit system consent
 - [x] All-state preview and hidden developer override screen
 - [x] Companion state survives normal app reopening
 
@@ -61,6 +63,9 @@ cannot be certified by JVM tests or static lint alone.
 - [ ] Confirm selected emoji glyphs render correctly on each target device and OEM font
 - [ ] Confirm lock-screen notification visibility under the device owner's privacy settings
 - [ ] Add and exercise the Quick Settings tile on Android 9 and a current Android device
+- [ ] Triple-tap, approve capture, and confirm the PNG appears in Pictures/Ambient
+- [ ] Deny screenshot consent and confirm the overlay continues without interruption
+- [ ] Confirm Android blacks out protected content rather than capturing secure screens
 - [ ] Complete a crash-free daily-use soak test
 
 The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.

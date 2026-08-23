@@ -10,7 +10,7 @@ distracting, invasive, or battery hungry.
 ## V1 experience
 
 - A lightweight floating companion using Android's overlay APIs
-- Dragging, safe screen bounds, smooth edge snapping, and saved position
+- Free dragging anywhere within safe screen bounds, optional edge snapping, and saved position
 - Tap, double-tap, and long-press reactions with short message bubbles
 - Morning, day, evening, and night personalities
 - Optional approximate-location weather context with offline fallback
@@ -54,6 +54,12 @@ The complete V1 feature set is implemented:
 - Adjustable inactive opacity with automatic fade and touch-to-wake behavior
 - Public lock-screen notification with a dedicated Ambient status icon
 - Optional Quick Settings tile for showing or hiding the companion from system controls
+- Triple-tap screenshot capture through Android's system MediaProjection consent flow
+
+Triple-tapping the floating companion opens Android's official screen-capture confirmation.
+After approval, one screenshot is saved to `Pictures/Ambient`. Android may black out secure,
+banking, password, incognito, or DRM-protected content. Capture permission is controlled by
+the operating system and is not silently bypassed or retained by the app.
 
 ## Android system UI behavior
 
