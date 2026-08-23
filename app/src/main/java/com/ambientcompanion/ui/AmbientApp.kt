@@ -30,7 +30,7 @@ import com.ambientcompanion.domain.model.CompanionState
 import com.ambientcompanion.domain.repository.ContextSnapshot
 import kotlin.math.roundToInt
 
-enum class AppScreen { HOME, SETTINGS, PREVIEW, DEBUG }
+enum class AppScreen { HOME, CUSTOMIZE, SETTINGS, PREVIEW, DEBUG }
 
 @Composable
 fun AmbientApp(
@@ -55,6 +55,7 @@ fun AmbientApp(
             Onboarding(onRequestLocation, onRequestOverlay, hasOverlayPermission, onCompleteOnboarding)
         } else when (screen) {
             AppScreen.HOME -> Home(settings, snapshot, overlayRunning, onToggleCompanion, onRefresh, onNavigate)
+            AppScreen.CUSTOMIZE -> Customize(settings, onUpdateSettings, onNavigate)
             AppScreen.SETTINGS -> Settings(settings, onToggleCompanion, onUpdateSettings, onResetPosition, onAddQuickTile, onRefresh, onNavigate)
             AppScreen.PREVIEW -> Preview(onPreviewState, onNavigate)
             AppScreen.DEBUG -> Debug(onPreviewState, onNavigate)
@@ -104,11 +105,71 @@ private fun Home(settings: UserSettings, snapshot: ContextSnapshot?, running: Bo
             Spacer(Modifier.height(6.dp)); Text(contextLine(snapshot), color = MutedInk, fontSize = 14.sp); Spacer(Modifier.height(30.dp))
             PremiumCard { SettingRow("Floating companion", if (running) "Here with you" else "Currently resting") { Switch(running, toggle, colors = premiumSwitchColors()) } }
             Spacer(Modifier.height(14.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth().clickable { navigate(AppScreen.CUSTOMIZE) },
+                color = Aubergine,
+                shape = RoundedCornerShape(24.dp),
+                shadowElevation = 8.dp,
+            ) {
+                Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (settings.companionAppearance == CompanionAppearance.EMOJI) settings.selectedEmoji else "✦", fontSize = 30.sp)
+                    Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                        Text("Customize companion", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                        Text("Change mascot, emoji, size and fade", color = Color.White.copy(alpha = .72f), fontSize = 13.sp)
+                    }
+                    Text("›", color = Color.White, fontSize = 26.sp)
+                }
+            }
+            Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SmallAction("Refresh", Modifier.weight(1f), refresh); SmallAction("Preview", Modifier.weight(1f)) { navigate(AppScreen.PREVIEW) }; SmallAction("Settings", Modifier.weight(1f)) { navigate(AppScreen.SETTINGS) }
             }
             Spacer(Modifier.height(22.dp)); Text(if (settings.weatherEnabled) "Weather context on · Private by design" else "Time-only mode · Private by design", color = MutedInk, fontSize = 12.sp)
         }
+    }
+}
+
+@Composable
+private fun Customize(
+    settings: UserSettings,
+    update: ((UserSettings) -> UserSettings) -> Unit,
+    navigate: (AppScreen) -> Unit,
+) {
+    ScreenList("Customize", { navigate(AppScreen.HOME) }) {
+        item {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Mascot(
+                    CompanionState.DAY_CLEAR,
+                    138,
+                    settings.selectedEmoji.takeIf { settings.companionAppearance == CompanionAppearance.EMOJI },
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("Your floating companion", color = MutedInk, fontSize = 13.sp)
+            }
+        }
+        item { SectionLabel("CHOOSE A LOOK") }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AppearanceChoice(
+                    title = "Ambient",
+                    symbol = "•ᴗ•",
+                    selected = settings.companionAppearance == CompanionAppearance.AMBIENT,
+                    modifier = Modifier.weight(1f),
+                ) { update { it.copy(companionAppearance = CompanionAppearance.AMBIENT) } }
+                AppearanceChoice(
+                    title = "Emoji",
+                    symbol = settings.selectedEmoji,
+                    selected = settings.companionAppearance == CompanionAppearance.EMOJI,
+                    modifier = Modifier.weight(1f),
+                ) { update { it.copy(companionAppearance = CompanionAppearance.EMOJI) } }
+            }
+        }
+        if (settings.companionAppearance == CompanionAppearance.EMOJI) {
+            item { EmojiPicker(settings.selectedEmoji) { emoji -> update { it.copy(selectedEmoji = emoji) } } }
+        }
+        item { SectionLabel("DISPLAY") }
+        item { ActionCard("Companion size", settings.companionSize.name.lowercase().replaceFirstChar(Char::uppercase)) { val next = CompanionSize.entries[(settings.companionSize.ordinal + 1) % 3]; update { it.copy(companionSize = next) } } }
+        item { OpacityControl(settings.idleOpacity) { value -> update { it.copy(idleOpacity = value) } } }
     }
 }
 
@@ -160,6 +221,18 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
 @Composable private fun PremiumCard(content: @Composable ColumnScope.() -> Unit) = Surface(color = Color.White.copy(alpha = .9f), shape = RoundedCornerShape(28.dp), shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(22.dp), content = content) }
 @Composable private fun SettingRow(title: String, subtitle: String, control: @Composable () -> Unit) = Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, color = Ink, fontWeight = FontWeight.SemiBold); Text(subtitle, color = MutedInk, fontSize = 13.sp) }; control() }
 @Composable private fun ToggleCard(title: String, subtitle: String, checked: Boolean, change: (Boolean) -> Unit) = PremiumCard { SettingRow(title, subtitle) { Switch(checked, change, colors = premiumSwitchColors()) } }
+@Composable private fun AppearanceChoice(title: String, symbol: String, selected: Boolean, modifier: Modifier, select: () -> Unit) = Surface(
+    modifier = modifier.height(116.dp).clickable(onClick = select),
+    color = if (selected) Color(0xFFFFE8C4) else Color.White.copy(alpha = .88f),
+    shape = RoundedCornerShape(24.dp),
+    border = if (selected) androidx.compose.foundation.BorderStroke(2.dp, AmberDeep) else null,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text(symbol, color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Text(title, color = Ink, fontWeight = FontWeight.SemiBold)
+    }
+}
 @Composable private fun EmojiPicker(selected: String, select: (String) -> Unit) = PremiumCard {
     Text("Choose an emoji", color = Ink, fontWeight = FontWeight.SemiBold)
     Spacer(Modifier.height(14.dp))
