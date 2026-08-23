@@ -39,6 +39,7 @@ fun AmbientApp(
     snapshot: ContextSnapshot?,
     screen: AppScreen,
     hasOverlayPermission: Boolean,
+    hasAccessibilityPermission: Boolean,
     overlayRunning: Boolean,
     onNavigate: (AppScreen) -> Unit,
     onRequestLocation: () -> Unit,
@@ -56,9 +57,16 @@ fun AmbientApp(
         if (!settingsLoaded) {
             LaunchScreen()
         } else if (!settings.onboardingComplete) {
-            Onboarding(onRequestLocation, onRequestOverlay, hasOverlayPermission, onCompleteOnboarding)
+            Onboarding(
+                onRequestLocation,
+                onRequestOverlay,
+                onOpenAccessibilitySettings,
+                hasOverlayPermission,
+                hasAccessibilityPermission,
+                onCompleteOnboarding,
+            )
         } else when (screen) {
-            AppScreen.HOME -> Home(settings, snapshot, overlayRunning, onToggleCompanion, onRefresh, onNavigate)
+            AppScreen.HOME -> Home(settings, snapshot, overlayRunning, hasAccessibilityPermission, onToggleCompanion, onOpenAccessibilitySettings, onRefresh, onNavigate)
             AppScreen.CUSTOMIZE -> Customize(settings, onUpdateSettings, onNavigate)
             AppScreen.SETTINGS -> Settings(settings, onToggleCompanion, onUpdateSettings, onResetPosition, onAddQuickTile, onOpenAccessibilitySettings, onRefresh, onNavigate)
             AppScreen.PREVIEW -> Preview(onPreviewState, onNavigate)
@@ -83,20 +91,28 @@ private fun LaunchScreen() {
 }
 
 @Composable
-private fun Onboarding(requestLocation: () -> Unit, requestOverlay: () -> Unit, overlayAllowed: Boolean, complete: () -> Unit) {
+private fun Onboarding(
+    requestLocation: () -> Unit,
+    requestOverlay: () -> Unit,
+    requestAccessibility: () -> Unit,
+    overlayAllowed: Boolean,
+    accessibilityAllowed: Boolean,
+    complete: () -> Unit,
+) {
     var step by rememberSaveable { mutableIntStateOf(0) }
-    val titles = listOf("Meet Ambient", "Moves with your world", "Weather, gently", "One small permission", "You're all set")
+    val titles = listOf("Meet Ambient", "Moves with your world", "Weather, gently", "Float anywhere", "Helpful controls", "You're all set")
     val copy = listOf(
         "A tiny companion designed to make ordinary moments feel a little warmer.",
         "Morning energy, evening calm, and a sleepy face when the day winds down.",
         "Approximate location helps Ambient notice rain, warmth, and daylight. Your location history is never stored.",
         "Allow Ambient to appear over your home screen and apps. You can hide it instantly at any time.",
+        "Enable Ambient's accessibility service for Back, Home, Recents, screenshot, lock screen, and other controls. Ambient never reads or stores screen content.",
         "Your companion is ready to say hello.",
     )
     PremiumBackground {
         Column(Modifier.fillMaxSize().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text("0${step + 1}  /  05", color = AmberDeep, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-            Spacer(Modifier.height(34.dp)); Mascot(if (step == 4) CompanionState.MORNING_CLEAR else CompanionState.DAY_CLEAR, 148)
+            Text("0${step + 1}  /  06", color = AmberDeep, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            Spacer(Modifier.height(34.dp)); Mascot(if (step == 5) CompanionState.MORNING_CLEAR else CompanionState.DAY_CLEAR, 148)
             Spacer(Modifier.height(34.dp)); Text(titles[step], color = Ink, fontSize = 34.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
             Spacer(Modifier.height(12.dp)); Text(copy[step], color = MutedInk, fontSize = 16.sp, lineHeight = 23.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(36.dp))
@@ -107,7 +123,8 @@ private fun Onboarding(requestLocation: () -> Unit, requestOverlay: () -> Unit, 
                     OutlinedButton(onClick = { step++ }, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) { Text("Choose a city later", color = Ink) }
                 }
                 3 -> PrimaryButton(if (overlayAllowed) "Continue" else "Allow floating companion") { if (overlayAllowed) step++ else requestOverlay() }
-                4 -> PrimaryButton("Meet my companion", complete)
+                4 -> PrimaryButton(if (accessibilityAllowed) "Continue" else "Enable accessibility controls") { if (accessibilityAllowed) step++ else requestAccessibility() }
+                5 -> PrimaryButton("Meet my companion", complete)
                 else -> PrimaryButton("Continue") { step++ }
             }
         }
@@ -115,7 +132,16 @@ private fun Onboarding(requestLocation: () -> Unit, requestOverlay: () -> Unit, 
 }
 
 @Composable
-private fun Home(settings: UserSettings, snapshot: ContextSnapshot?, running: Boolean, toggle: (Boolean) -> Unit, refresh: () -> Unit, navigate: (AppScreen) -> Unit) {
+private fun Home(
+    settings: UserSettings,
+    snapshot: ContextSnapshot?,
+    running: Boolean,
+    accessibilityEnabled: Boolean,
+    toggle: (Boolean) -> Unit,
+    openAccessibilitySettings: () -> Unit,
+    refresh: () -> Unit,
+    navigate: (AppScreen) -> Unit,
+) {
     val state = snapshot?.state ?: CompanionState.DAY_CLEAR
     PremiumBackground {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -124,6 +150,14 @@ private fun Home(settings: UserSettings, snapshot: ContextSnapshot?, running: Bo
             Spacer(Modifier.height(6.dp)); Text(contextLine(snapshot), color = MutedInk, fontSize = 14.sp); Spacer(Modifier.height(30.dp))
             PremiumCard { SettingRow("Floating companion", if (running) "Here with you" else "Currently resting") { Switch(running, toggle, colors = premiumSwitchColors()) } }
             Spacer(Modifier.height(14.dp))
+            if (!accessibilityEnabled) {
+                ActionCard(
+                    "Enable accessibility controls",
+                    "Required for Back, Home, screenshot, lock screen and more",
+                    openAccessibilitySettings,
+                )
+                Spacer(Modifier.height(14.dp))
+            }
             Surface(
                 modifier = Modifier.fillMaxWidth().clickable { navigate(AppScreen.CUSTOMIZE) },
                 color = Aubergine,

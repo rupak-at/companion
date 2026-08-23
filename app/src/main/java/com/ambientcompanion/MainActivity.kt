@@ -17,6 +17,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.ambientcompanion.data.preferences.UserSettings
+import com.ambientcompanion.accessibility.AssistiveControlService
 import com.ambientcompanion.domain.repository.ContextSnapshot
 import com.ambientcompanion.overlay.CompanionOverlayService
 import com.ambientcompanion.quicksettings.CompanionTileService
@@ -31,6 +32,7 @@ class MainActivity : ComponentActivity() {
     private var snapshotState = androidx.compose.runtime.mutableStateOf<ContextSnapshot?>(null)
     private var screenState = androidx.compose.runtime.mutableStateOf(AppScreen.HOME)
     private var overlayPermissionState = androidx.compose.runtime.mutableStateOf(false)
+    private var accessibilityEnabledState = androidx.compose.runtime.mutableStateOf(false)
 
     private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         refreshContext(true)
@@ -59,6 +61,7 @@ class MainActivity : ComponentActivity() {
                 snapshot = snapshotState.value,
                 screen = screenState.value,
                 hasOverlayPermission = overlayPermissionState.value,
+                hasAccessibilityPermission = accessibilityEnabledState.value,
                 overlayRunning = CompanionOverlayService.isRunning,
                 onNavigate = { screenState.value = it },
                 onRequestLocation = { locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
@@ -88,6 +91,18 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         overlayPermissionState.value = Settings.canDrawOverlays(this)
+        accessibilityEnabledState.value = isAssistiveServiceEnabled()
+    }
+
+    private fun isAssistiveServiceEnabled(): Boolean {
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        ).orEmpty()
+        val expected = ComponentName(this, AssistiveControlService::class.java)
+        return enabledServices.split(':')
+            .mapNotNull(ComponentName::unflattenFromString)
+            .any { it == expected }
     }
 
     private fun openOverlaySettings() {
