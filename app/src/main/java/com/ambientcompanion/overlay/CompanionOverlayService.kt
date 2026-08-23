@@ -32,6 +32,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.ambientcompanion.MainActivity
 import com.ambientcompanion.AmbientApplication
+import com.ambientcompanion.R
 import com.ambientcompanion.data.preferences.UserSettings
 import com.ambientcompanion.domain.engine.MessageSelector
 import com.ambientcompanion.domain.model.CompanionState
@@ -64,6 +65,7 @@ class CompanionOverlayService : Service() {
                 Intent.ACTION_SCREEN_ON -> { companionView?.startIdleAnimation(settings.reducedMotion); refreshContext() }
                 Intent.ACTION_CONFIGURATION_CHANGED -> clampToScreen()
                 ACTION_CONTEXT_UPDATED -> refreshContext(true)
+                ACTION_SETTINGS_UPDATED -> refreshContext()
             }
         }
     }
@@ -107,6 +109,7 @@ class CompanionOverlayService : Service() {
                 }
             }
             ACTION_CONTEXT_UPDATED -> refreshContext(true)
+            ACTION_SETTINGS_UPDATED -> refreshContext()
             ACTION_RESET_POSITION -> resetPosition()
         }
         return START_STICKY
@@ -161,6 +164,7 @@ class CompanionOverlayService : Service() {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_CONFIGURATION_CHANGED)
             addAction(ACTION_CONTEXT_UPDATED)
+            addAction(ACTION_SETTINGS_UPDATED)
         }
         ContextCompat.registerReceiver(this, systemReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         receiverRegistered = true
@@ -420,7 +424,7 @@ class CompanionOverlayService : Service() {
     }
 
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.ic_dialog_info)
+        .setSmallIcon(R.drawable.ic_stat_ambient)
         .setContentTitle("Ambient Companion is active")
         .setContentText("Tap to manage your companion")
         .setContentIntent(
@@ -442,6 +446,7 @@ class CompanionOverlayService : Service() {
             ),
         )
         .setOngoing(true)
+        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .build()
 
@@ -451,6 +456,7 @@ class CompanionOverlayService : Service() {
             "Floating companion",
             NotificationManager.IMPORTANCE_LOW,
         )
+        channel.lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
@@ -478,6 +484,7 @@ class CompanionOverlayService : Service() {
         private const val BUBBLE_TOKEN = "message_bubble"
         const val ACTION_PREVIEW = "com.ambientcompanion.action.PREVIEW"
         const val ACTION_CONTEXT_UPDATED = "com.ambientcompanion.action.CONTEXT_UPDATED"
+        const val ACTION_SETTINGS_UPDATED = "com.ambientcompanion.action.SETTINGS_UPDATED"
         const val EXTRA_STATE = "companion_state"
         const val ACTION_HIDE = "com.ambientcompanion.action.HIDE"
         const val ACTION_RESET_POSITION = "com.ambientcompanion.action.RESET_POSITION"

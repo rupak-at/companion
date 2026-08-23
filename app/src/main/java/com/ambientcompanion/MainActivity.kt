@@ -108,6 +108,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateSettings(transform: (UserSettings) -> UserSettings) {
-        lifecycleScope.launch { app.preferences.updateSettings(transform) }
+        lifecycleScope.launch {
+            app.preferences.updateSettings(transform)
+            if (CompanionOverlayService.isRunning) {
+                sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
+            }
+        }
     }
 }

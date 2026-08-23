@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ambientcompanion.data.preferences.CompanionSize
+import com.ambientcompanion.data.preferences.CompanionAppearance
 import com.ambientcompanion.data.preferences.UserSettings
 import com.ambientcompanion.domain.model.CompanionState
 import com.ambientcompanion.domain.repository.ContextSnapshot
@@ -97,7 +98,7 @@ private fun Home(settings: UserSettings, snapshot: ContextSnapshot?, running: Bo
     val state = snapshot?.state ?: CompanionState.DAY_CLEAR
     PremiumBackground {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            BrandMark(); Spacer(Modifier.height(34.dp)); Mascot(state, 154); Spacer(Modifier.height(18.dp))
+            BrandMark(); Spacer(Modifier.height(34.dp)); Mascot(state, 154, settings.selectedEmoji.takeIf { settings.companionAppearance == CompanionAppearance.EMOJI }); Spacer(Modifier.height(18.dp))
             Text(messageFor(state), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(6.dp)); Text(contextLine(snapshot), color = MutedInk, fontSize = 14.sp); Spacer(Modifier.height(30.dp))
             PremiumCard { SettingRow("Floating companion", if (running) "Here with you" else "Currently resting") { Switch(running, toggle, colors = premiumSwitchColors()) } }
@@ -121,7 +122,12 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         item { ToggleCard("Weather context", "Use local conditions when available", settings.weatherEnabled) { value -> update { it.copy(weatherEnabled = value) } } }
         item { ToggleCard("Reduced motion", "Prefer gentle fades", settings.reducedMotion) { value -> update { it.copy(reducedMotion = value) } } }
         item { SectionLabel("COMPANION") }
+        item { ActionCard("Appearance", if (settings.companionAppearance == CompanionAppearance.EMOJI) "Emoji · ${settings.selectedEmoji}" else "Ambient mascot") { update { it.copy(companionAppearance = if (it.companionAppearance == CompanionAppearance.AMBIENT) CompanionAppearance.EMOJI else CompanionAppearance.AMBIENT) } } }
+        if (settings.companionAppearance == CompanionAppearance.EMOJI) {
+            item { EmojiPicker(settings.selectedEmoji) { emoji -> update { it.copy(selectedEmoji = emoji) } } }
+        }
         item { ActionCard("Size", settings.companionSize.name.lowercase().replaceFirstChar(Char::uppercase)) { val next = CompanionSize.entries[(settings.companionSize.ordinal + 1) % 3]; update { it.copy(companionSize = next) } } }
+        item { OpacityControl(settings.idleOpacity) { value -> update { it.copy(idleOpacity = value) } } }
         item { ActionCard("Location", if (settings.manualLatitude == null) "Automatic · tap for Kathmandu" else "Kathmandu · tap for automatic") { update { if (it.manualLatitude == null) it.copy(manualLatitude = 27.7172, manualLongitude = 85.3240) else it.copy(manualLatitude = null, manualLongitude = null) }; refresh() } }
         item { ActionCard("Reset position", "Return to the right edge", reset) }
         item { ActionCard("Refresh weather", "Update environmental context", refresh) }
@@ -148,10 +154,30 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
 }
 @Composable private fun PremiumBackground(content: @Composable BoxScope.() -> Unit) = Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Porcelain, Color(0xFFFFFDF9))))) { Canvas(Modifier.size(280.dp).align(Alignment.TopEnd).blur(48.dp)) { drawCircle(Color(0x22FFB86B), size.minDimension * .46f) }; content() }
 @Composable private fun BrandMark() = Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(28.dp).background(Aubergine, CircleShape), contentAlignment = Alignment.Center) { Text("•ᴗ•", color = Amber, fontSize = 10.sp, fontWeight = FontWeight.Bold) }; Text("  AMBIENT", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp) }
-@Composable private fun Mascot(state: CompanionState, size: Int) { val colors = stateColors(state); Box(Modifier.size(size.dp).shadow(22.dp, CircleShape, ambientColor = colors.last().copy(alpha = .3f)).background(Brush.radialGradient(colors), CircleShape), contentAlignment = Alignment.Center) { Text(faceFor(state), color = Ink, fontSize = (size * .17f).sp, fontWeight = FontWeight.Bold) } }
+@Composable private fun Mascot(state: CompanionState, size: Int, emoji: String? = null) { val colors = stateColors(state); if (emoji != null) { Box(Modifier.size(size.dp), contentAlignment = Alignment.Center) { Text(emoji, fontSize = (size * .58f).sp) } } else { Box(Modifier.size(size.dp).shadow(22.dp, CircleShape, ambientColor = colors.last().copy(alpha = .3f)).background(Brush.radialGradient(colors), CircleShape), contentAlignment = Alignment.Center) { Text(faceFor(state), color = Ink, fontSize = (size * .17f).sp, fontWeight = FontWeight.Bold) } } }
 @Composable private fun PremiumCard(content: @Composable ColumnScope.() -> Unit) = Surface(color = Color.White.copy(alpha = .9f), shape = RoundedCornerShape(28.dp), shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(22.dp), content = content) }
 @Composable private fun SettingRow(title: String, subtitle: String, control: @Composable () -> Unit) = Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, color = Ink, fontWeight = FontWeight.SemiBold); Text(subtitle, color = MutedInk, fontSize = 13.sp) }; control() }
 @Composable private fun ToggleCard(title: String, subtitle: String, checked: Boolean, change: (Boolean) -> Unit) = PremiumCard { SettingRow(title, subtitle) { Switch(checked, change, colors = premiumSwitchColors()) } }
+@Composable private fun EmojiPicker(selected: String, select: (String) -> Unit) = PremiumCard {
+    Text("Choose an emoji", color = Ink, fontWeight = FontWeight.SemiBold)
+    Spacer(Modifier.height(14.dp))
+    emojiChoices.chunked(6).forEach { row ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            row.forEach { emoji ->
+                Surface(
+                    modifier = Modifier.size(44.dp).clickable { select(emoji) },
+                    color = if (emoji == selected) Color(0xFFFFE8C4) else Color.Transparent,
+                    shape = CircleShape,
+                ) { Box(contentAlignment = Alignment.Center) { Text(emoji, fontSize = 25.sp) } }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+    }
+}
+@Composable private fun OpacityControl(value: Float, update: (Float) -> Unit) = PremiumCard {
+    SettingRow("Inactive opacity", "Fades to ${(value * 100).roundToInt()}% after 2.5 seconds") { Text("${(value * 100).roundToInt()}%", color = Aubergine, fontWeight = FontWeight.Bold) }
+    Slider(value = value, onValueChange = update, valueRange = .35f..1f, steps = 12, colors = SliderDefaults.colors(thumbColor = Aubergine, activeTrackColor = Aubergine, inactiveTrackColor = Color(0xFFE4DCE1)))
+}
 @Composable private fun ActionCard(title: String, subtitle: String, action: () -> Unit) = Surface(Modifier.fillMaxWidth().clickable(onClick = action), color = Color.White.copy(alpha = .88f), shape = RoundedCornerShape(24.dp)) { Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, color = Ink, fontWeight = FontWeight.SemiBold); Text(subtitle, color = MutedInk, fontSize = 13.sp) }; Text("›", color = Aubergine, fontSize = 24.sp) } }
 @Composable private fun SectionLabel(text: String) = Text(text, color = AmberDeep, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp, modifier = Modifier.padding(top = 12.dp))
 @Composable private fun PrimaryButton(label: String, action: () -> Unit) = Button(onClick = action, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = Aubergine)) { Text(label, fontWeight = FontWeight.SemiBold) }
@@ -163,4 +189,5 @@ private fun messageFor(state: CompanionState) = when (state) { CompanionState.DA
 private fun stateColors(state: CompanionState) = when (state) { CompanionState.NIGHT_CLEAR, CompanionState.NIGHT_CLOUDY, CompanionState.NIGHT_RAIN, CompanionState.NIGHT_SLEEP -> listOf(Color(0xFFD9D1FF), Color(0xFF8068B2)); CompanionState.MORNING_RAIN, CompanionState.DAY_RAIN, CompanionState.EVENING_RAIN, CompanionState.STORM -> listOf(Color(0xFFC9E7F2), Color(0xFF6E93A8)); CompanionState.COLD, CompanionState.SNOW, CompanionState.FOG -> listOf(Color(0xFFE9F5F6), Color(0xFF9FC7CA)); CompanionState.EVENING_CLEAR, CompanionState.EVENING_CLOUDY -> listOf(Color(0xFFFFD4BC), Color(0xFFC98187)); else -> listOf(Color(0xFFFFE8B7), Amber) }
 private fun faceFor(state: CompanionState) = when (state) { CompanionState.NIGHT_SLEEP -> "− ᴗ −"; CompanionState.STORM -> "• ﹏ •"; CompanionState.DAY_HOT -> "• _ •"; else -> "• ᴗ •" }
 private fun CompanionState.displayName() = name.lowercase().split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
+private val emojiChoices = listOf("😊", "😀", "😂", "😍", "😎", "🥰", "😴", "🤓", "🥳", "😇", "🤩", "😜", "🥶", "🥵", "🤡", "👻", "💩", "💀")
 private val Porcelain = Color(0xFFFFF8F2); private val Ink = Color(0xFF302832); private val MutedInk = Color(0xFF786F77); private val Aubergine = Color(0xFF68486D); private val Amber = Color(0xFFFFBF67); private val AmberDeep = Color(0xFFAA6D2A)
