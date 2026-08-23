@@ -170,6 +170,12 @@ class CompanionOverlayService : Service() {
         serviceScope.launch {
             settings = app.preferences.currentSettings()
             resizeCompanion(settings.companionSize.dp)
+            companionView?.configureAppearance(
+                settings.companionAppearance,
+                settings.selectedEmoji,
+                settings.idleOpacity,
+                settings.reducedMotion,
+            )
             val snapshot = app.contextRepository.refresh(force)
             if (android.os.SystemClock.uptimeMillis() >= previewUntil) applyState(snapshot.state)
             maybeShowAutomaticMessage(snapshot.state)
@@ -261,7 +267,8 @@ class CompanionOverlayService : Service() {
                     touchX = event.rawX
                     touchY = event.rawY
                     dragged = false
-                    (view as CompanionView).pauseAnimation()
+                    (view as CompanionView).wake()
+                    view.pauseAnimation()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
