@@ -49,6 +49,7 @@ fun AmbientApp(
     onUpdateSettings: ((UserSettings) -> UserSettings) -> Unit,
     onResetPosition: () -> Unit,
     onAddQuickTile: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
     onPreviewState: (CompanionState) -> Unit,
 ) {
     MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(primary = Aubergine, surface = Porcelain)) {
@@ -59,7 +60,7 @@ fun AmbientApp(
         } else when (screen) {
             AppScreen.HOME -> Home(settings, snapshot, overlayRunning, onToggleCompanion, onRefresh, onNavigate)
             AppScreen.CUSTOMIZE -> Customize(settings, onUpdateSettings, onNavigate)
-            AppScreen.SETTINGS -> Settings(settings, onToggleCompanion, onUpdateSettings, onResetPosition, onAddQuickTile, onRefresh, onNavigate)
+            AppScreen.SETTINGS -> Settings(settings, onToggleCompanion, onUpdateSettings, onResetPosition, onAddQuickTile, onOpenAccessibilitySettings, onRefresh, onNavigate)
             AppScreen.PREVIEW -> Preview(onPreviewState, onNavigate)
             AppScreen.DEBUG -> Debug(onPreviewState, onNavigate)
         }
@@ -193,7 +194,7 @@ private fun Customize(
 }
 
 @Composable
-private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit, update: ((UserSettings) -> UserSettings) -> Unit, reset: () -> Unit, addQuickTile: () -> Unit, refresh: () -> Unit, navigate: (AppScreen) -> Unit) {
+private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit, update: ((UserSettings) -> UserSettings) -> Unit, reset: () -> Unit, addQuickTile: () -> Unit, openAccessibilitySettings: () -> Unit, refresh: () -> Unit, navigate: (AppScreen) -> Unit) {
     var taps by remember { mutableIntStateOf(0) }
     ScreenList("Settings", { navigate(AppScreen.HOME) }) {
         item { SectionLabel("EXPERIENCE") }
@@ -202,6 +203,7 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         item { ToggleCard("Automatic messages", "At most once each hour", settings.automaticMessages) { value -> update { it.copy(automaticMessages = value) } } }
         item { ToggleCard("Weather context", "Use local conditions when available", settings.weatherEnabled) { value -> update { it.copy(weatherEnabled = value) } } }
         item { ToggleCard("Reduced motion", "Prefer gentle fades", settings.reducedMotion) { value -> update { it.copy(reducedMotion = value) } } }
+        item { ActionCard("Assistive controls", "Enable Back, Home, Recents and system actions") { openAccessibilitySettings() } }
         item { SectionLabel("COMPANION") }
         item { ActionCard("Appearance", if (settings.companionAppearance == CompanionAppearance.EMOJI) "Emoji · ${settings.selectedEmoji}" else "Ambient mascot") { update { it.copy(companionAppearance = if (it.companionAppearance == CompanionAppearance.AMBIENT) CompanionAppearance.EMOJI else CompanionAppearance.AMBIENT) } } }
         if (settings.companionAppearance == CompanionAppearance.EMOJI) {
@@ -286,7 +288,7 @@ private fun faceFor(state: CompanionState) = when (state) { CompanionState.NIGHT
 private fun CompanionState.displayName() = name.lowercase().split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
 private val emojiChoices = listOf(
     // Happy and cheerful
-    "😀", "😃", "😄", "😁", "😆", "😅",
+    "🤠", "😀", "😃", "😄", "😁", "😆",
     "😂", "🤣", "😊", "😇", "🙂", "🙃",
     "😉", "😌", "😍", "🥰", "😘", "😗",
     "😙", "😚", "🤗", "🤩", "🥳", "😎",
@@ -310,7 +312,7 @@ private val emojiChoices = listOf(
     "🥶", "🥵", "😶‍🌫️", "😈", "👿", "💀",
 
     // Characters and creatures
-    "🤠", "🥸", "🤡", "👻", "👽", "🤖",
+    "😅", "🥸", "🤡", "👻", "👽", "🤖",
     "💩", "😺", "😸", "😹", "😻", "😼",
     "🙈", "🙉", "🙊", "🐶", "🐱", "🐼",
 )

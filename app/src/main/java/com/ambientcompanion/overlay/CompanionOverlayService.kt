@@ -24,7 +24,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
-import android.widget.LinearLayout
+import android.widget.GridLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -34,6 +34,8 @@ import com.ambientcompanion.MainActivity
 import com.ambientcompanion.AmbientApplication
 import com.ambientcompanion.R
 import com.ambientcompanion.data.preferences.UserSettings
+import com.ambientcompanion.accessibility.AssistiveAction
+import com.ambientcompanion.accessibility.AssistiveControlService
 import com.ambientcompanion.domain.engine.MessageSelector
 import com.ambientcompanion.domain.model.CompanionState
 import com.ambientcompanion.screenshot.ScreenshotPermissionActivity
@@ -403,8 +405,8 @@ class CompanionOverlayService : Service() {
     private fun showQuickMenu() {
         quickMenuView?.let(windowManager::removeView)
         val companionParams = layoutParams ?: return
-        val menu = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        val menu = GridLayout(this).apply {
+            columnCount = 2
             setPadding(dp(8), dp(8), dp(8), dp(8))
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(Color.rgb(255, 252, 248))
@@ -415,27 +417,50 @@ class CompanionOverlayService : Service() {
             menu.addView(Button(this).apply {
                 text = label
                 isAllCaps = false
+                textSize = 12f
+                backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(245, 238, 242))
                 setOnClickListener {
                     dismissQuickMenu()
                     block()
                 }
-            }, LinearLayout.LayoutParams(dp(176), dp(48)))
+            }, GridLayout.LayoutParams().apply {
+                width = dp(140)
+                height = dp(48)
+                setMargins(dp(3), dp(3), dp(3), dp(3))
+            })
         }
-        action("Refresh context") { refreshContext(true); showMessage("All fresh ✨") }
-        action("Open Ambient") {
-            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
-        action("Hide for now") {
-            serviceScope.launch {
-                app.preferences.updateSettings { it.copy(companionEnabled = false) }
-                stopSelf()
+        fun assistive(label: String, assistiveAction: AssistiveAction) {
+            action(label) {
+                if (!AssistiveControlService.perform(assistiveAction)) showMessage("Action isn't available here")
             }
         }
 
-        val params = overlayParams(dp(192), WindowManager.LayoutParams.WRAP_CONTENT).apply {
+        if (AssistiveControlService.isConnected) {
+            assistive("←  Back", AssistiveAction.BACK)
+            assistive("⌂  Home", AssistiveAction.HOME)
+            assistive("▣  Recents", AssistiveAction.RECENTS)
+            assistive("Notifications", AssistiveAction.NOTIFICATIONS)
+            assistive("Quick Settings", AssistiveAction.QUICK_SETTINGS)
+            assistive("Lock screen", AssistiveAction.LOCK_SCREEN)
+            assistive("Power dialog", AssistiveAction.POWER_DIALOG)
+            action("Refresh") { refreshContext(true); showMessage("All fresh ✨") }
+        } else {
+            action("Enable assistive controls") {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            action("Why permission?") {
+                showMessage("Enables only user-requested system controls")
+            }
+        }
+        action("Open Ambient") { startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        action("Hide") { serviceScope.launch { app.preferences.updateSettings { it.copy(companionEnabled = false) }; stopSelf() } }
+
+        val menuWidth = dp(304)
+        val estimatedHeight = dp(if (AssistiveControlService.isConnected) 260 else 116)
+        val params = overlayParams(menuWidth, WindowManager.LayoutParams.WRAP_CONTENT).apply {
             flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-            x = companionParams.x.coerceAtMost((screenSize().x - dp(192)).coerceAtLeast(0))
-            y = (companionParams.y - dp(168)).coerceAtLeast(0)
+            x = (companionParams.x - menuWidth / 2).coerceIn(0, (screenSize().x - menuWidth).coerceAtLeast(0))
+            y = if (companionParams.y >= estimatedHeight) companionParams.y - estimatedHeight else companionParams.y + dp(64)
         }
         windowManager.addView(menu, params)
         quickMenuView = menu

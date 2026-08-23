@@ -72,6 +72,9 @@ class MainActivity : ComponentActivity() {
                     startService(Intent(this, CompanionOverlayService::class.java).setAction(CompanionOverlayService.ACTION_RESET_POSITION))
                 },
                 onAddQuickTile = ::requestQuickSettingsTile,
+                onOpenAccessibilitySettings = {
+                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                },
                 onPreviewState = { state ->
                     startService(Intent(this, CompanionOverlayService::class.java).apply {
                         action = CompanionOverlayService.ACTION_PREVIEW
