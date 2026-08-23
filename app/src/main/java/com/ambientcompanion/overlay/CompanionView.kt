@@ -26,9 +26,14 @@ class CompanionView(context: Context) : View(context) {
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.argb(35, 35, 20, 30)
     }
-    private val emojiPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val emojiPaint = Paint(
+        Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.EMBEDDED_BITMAP_TEXT_FLAG,
+    ).apply {
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT
+        isFilterBitmap = false
+        isDither = false
+        hinting = Paint.HINTING_ON
     }
     private val fadeRunnable = Runnable {
         animate().alpha(idleOpacity).setDuration(if (reducedMotion) 0 else 450).start()
@@ -37,6 +42,7 @@ class CompanionView(context: Context) : View(context) {
     init {
         contentDescription = "Ambient Companion. Tap for a message, drag to move, or long press for actions."
         isClickable = true
+        setLayerType(LAYER_TYPE_HARDWARE, null)
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
@@ -61,9 +67,10 @@ class CompanionView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (appearance == CompanionAppearance.EMOJI) {
-            emojiPaint.textSize = minOf(width, height) * .68f
+            emojiPaint.textSize = (minOf(width, height) * .82f).toInt().toFloat()
             val centerY = height / 2f - (emojiPaint.ascent() + emojiPaint.descent()) / 2f
-            canvas.drawText(emoji, width / 2f, centerY, emojiPaint)
+            val centerX = (width / 2f).toInt().toFloat()
+            canvas.drawText(emoji, centerX, centerY.toInt().toFloat(), emojiPaint)
             return
         }
         val cx = width / 2f
@@ -138,6 +145,14 @@ class CompanionView(context: Context) : View(context) {
     fun setDragging(dragging: Boolean) {
         wake()
         animate().cancel()
+        if (appearance == CompanionAppearance.EMOJI) {
+            scaleX = 1f
+            scaleY = 1f
+            rotation = 0f
+            translationY = 0f
+            if (!dragging) scheduleIdleFade()
+            return
+        }
         animate()
             .scaleX(if (dragging) 0.92f else 1f)
             .scaleY(if (dragging) 1.08f else 1f)
@@ -184,7 +199,7 @@ class CompanionView(context: Context) : View(context) {
             updateShader()
             invalidate()
         }
-        if (reducedMotion) {
+        if (reducedMotion || appearance == CompanionAppearance.EMOJI) {
             apply()
         } else {
             animate().alpha(0f).scaleX(.86f).scaleY(.86f).setDuration(150).withEndAction {
@@ -204,6 +219,13 @@ class CompanionView(context: Context) : View(context) {
         this.emoji = emoji.ifBlank { "😊" }
         this.idleOpacity = idleOpacity.coerceIn(.35f, 1f)
         this.reducedMotion = reducedMotion
+        if (appearance == CompanionAppearance.EMOJI) {
+            animate().cancel()
+            scaleX = 1f
+            scaleY = 1f
+            rotation = 0f
+            translationY = 0f
+        }
         contentDescription = if (appearance == CompanionAppearance.EMOJI) {
             "$emoji floating emoji. Tap for a message, drag to move, or long press for actions."
         } else {
