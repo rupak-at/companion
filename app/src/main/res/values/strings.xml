@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Ambient Companion</string>
     <string name="accessibility_service_name">Ambient Companion controls</string>
-    <string name="accessibility_service_summary">Floating button actions for easier phone control</string>
-    <string name="accessibility_description">Shows the Ambient Companion control and performs only the system actions you request. It does not read screen content.</string>
+    <string name="accessibility_service_summary">Floating controls and optional private screen awareness</string>
+    <string name="accessibility_description">Shows the Ambient Companion and, only when Screen Awareness is enabled, derives local screen structure such as typing, scrolling, and fullscreen state. Raw screen content is never stored. Actions run only when you request them.</string>
 </resources>

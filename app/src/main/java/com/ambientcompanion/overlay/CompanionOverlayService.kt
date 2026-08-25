@@ -53,6 +53,9 @@ import com.ambientcompanion.animation.AnimationStateMachine
 import com.ambientcompanion.animation.AnimationPhase
 import com.ambientcompanion.domain.model.CompanionState
 import com.ambientcompanion.screenshot.ScreenshotPermissionActivity
+import com.ambientcompanion.data.screen.AccessibilityEventProcessor
+import com.ambientcompanion.data.screen.ContextRefreshLevel
+import com.ambientcompanion.data.screen.ScreenSnapshotBuilder
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
@@ -81,6 +84,11 @@ class CompanionOverlayService : AccessibilityService() {
     private val eventQueue = EventQueue()
     private val eventCooldowns = EventCooldowns()
     private val batteryStateTracker = BatteryStateTracker()
+    private val accessibilityEventProcessor = AccessibilityEventProcessor()
+    private val screenSnapshotBuilder = ScreenSnapshotBuilder()
+    private var pendingScreenRefresh = ContextRefreshLevel.FULL
+    private var foregroundPackage: String? = null
+    private val screenContextRefresh = Runnable { rebuildScreenContext() }
     private var lastDeviceContext: com.ambientcompanion.domain.context.DeviceContext? = null
     private var lastBatteryState: BatteryState? = null
     private var eventInFlight = false
@@ -162,7 +170,22 @@ class CompanionOverlayService : AccessibilityService() {
         if (updatePreference) serviceScope.launch { app.preferences.updateSettings { it.copy(companionEnabled = false) } }
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        event ?: return
+        foregroundPackage = event.packageName?.toString() ?: foregroundPackage
+        if (!settings.screenAwarenessEnabled || foregroundPackage in settings.excludedScreenApps) {
+            app.screenContextSource.clear()
+            return
+        }
+        val level = accessibilityEventProcessor.refreshLevel(event.eventType) ?: return
+        if (level == ContextRefreshLevel.LIGHT) return
+        if (level.ordinal > pendingScreenRefresh.ordinal) pendingScreenRefresh = level
+        handler.removeCallbacks(screenContextRefresh)
+        handler.postDelayed(
+            screenContextRefresh,
+            accessibilityEventProcessor.debounceMs(level, app.deviceContextSource.state.value.isPowerSaveMode),
+        )
+    }
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
@@ -172,6 +195,34 @@ class CompanionOverlayService : AccessibilityService() {
         serviceScope.cancel()
         if (instance === this) instance = null
         super.onDestroy()
+    }
+
+    private fun rebuildScreenContext() {
+        if (!settings.screenAwarenessEnabled || foregroundPackage in settings.excludedScreenApps) {
+            app.screenContextSource.clear()
+            return
+        }
+        val screen = screenSize()
+        val keyboardVisible = windows.any { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+        val root = rootInActiveWindow
+        val snapshot = screenSnapshotBuilder.build(
+            root = root,
+            packageName = foregroundPackage,
+            screenWidth = screen.x,
+            screenHeight = screen.y,
+            keyboardVisible = keyboardVisible,
+            fullScreen = isLikelyFullscreen(root, screen),
+            secureWindow = root == null && foregroundPackage != null,
+        )
+        app.screenContextSource.update(snapshot, settings.sensitiveScreenModeEnabled)
+        pendingScreenRefresh = ContextRefreshLevel.LIGHT
+    }
+
+    private fun isLikelyFullscreen(root: android.view.accessibility.AccessibilityNodeInfo?, screen: Point): Boolean {
+        root ?: return false
+        val bounds = android.graphics.Rect().also(root::getBoundsInScreen)
+        return bounds.left <= 0 && bounds.top <= 0 && bounds.right >= screen.x && bounds.bottom >= screen.y &&
+            windows.none { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
     }
 
     private fun showCompanion() {
