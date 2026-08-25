@@ -73,6 +73,7 @@ class CompanionOverlayService : AccessibilityService() {
     private var renderer: CompanionRenderer? = null
     private val animationStateMachine = AnimationStateMachine()
     private val handler = Handler(Looper.getMainLooper())
+    private val boundaryRefresh = Runnable { refreshContext() }
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val app by lazy { application as AmbientApplication }
     private val messageEngine = MessageEngine()
@@ -236,6 +237,7 @@ class CompanionOverlayService : AccessibilityService() {
 
     private suspend fun applyAmbientContext(environment: com.ambientcompanion.domain.model.CompanionContext) {
         val now = LocalTime.now()
+        scheduleNextBoundary(environment)
         val quiet = settings.quietHoursEnabled && SchedulePolicy.contains(now, settings.quietStartMinutes, settings.quietEndMinutes)
         val outsideActive = settings.activeHoursEnabled && !SchedulePolicy.contains(now, settings.activeStartMinutes, settings.activeEndMinutes)
         if (outsideActive && settings.outsideHoursBehavior == OutsideHoursBehavior.HIDE_COMPLETELY) {
@@ -349,6 +351,21 @@ class CompanionOverlayService : AccessibilityService() {
         var target = now.withHour(minutes / 60).withMinute(minutes % 60).withSecond(0).withNano(0)
         if (!target.isAfter(now)) target = target.plusDays(1)
         return target.toInstant().toEpochMilli()
+    }
+
+    private fun scheduleNextBoundary(environment: com.ambientcompanion.domain.model.CompanionContext) {
+        handler.removeCallbacks(boundaryRefresh)
+        val nowMillis = System.currentTimeMillis()
+        val minuteBoundaries = buildList {
+            addAll(listOf(5 * 60, 11 * 60, 17 * 60, 21 * 60))
+            if (settings.quietHoursEnabled) addAll(listOf(settings.quietStartMinutes, settings.quietEndMinutes))
+            if (settings.activeHoursEnabled) addAll(listOf(settings.activeStartMinutes, settings.activeEndMinutes))
+        }
+        val candidates = minuteBoundaries.map(::nextOccurrenceMillis).toMutableList()
+        environment.sunrise?.times(1_000)?.takeIf { it > nowMillis }?.let(candidates::add)
+        environment.sunset?.times(1_000)?.takeIf { it > nowMillis }?.let(candidates::add)
+        val delay = candidates.minOrNull()?.minus(nowMillis)?.coerceAtLeast(1_000L) ?: return
+        handler.postDelayed(boundaryRefresh, delay)
     }
 
     private fun applyState(state: CompanionState) {
