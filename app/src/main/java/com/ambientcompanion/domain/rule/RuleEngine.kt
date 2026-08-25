@@ -27,7 +27,7 @@ class RuleEngine(private val rules: List<ContextRule> = defaultRules) {
     data class ResolvedBehavior(val winningRuleId: String, val activeRuleIds: List<String>, val behavior: CompanionBehavior)
 
     companion object {
-        val defaultRules = listOf(CriticalBatteryRule, ChargingRule, StormRule, WeatherRule, QuietRule, WeekendRule, EnvironmentRule)
+        val defaultRules = listOf(CriticalBatteryRule, LowBatteryRule, ChargingRule, FullBatteryRule, StormRule, WeatherRule, QuietRule, WeekendRule, EnvironmentRule)
     }
 }
 
@@ -35,7 +35,16 @@ object CriticalBatteryRule : ContextRule {
     override val id = "critical_battery"; override val priority = 100
     override fun matches(context: AmbientContext) = context.preferences.batteryReactions && context.device.batteryState == BatteryState.CRITICAL
     override fun result(context: AmbientContext) = CompanionEffect.Persistent(CompanionBehavior(
-        CompanionState.COLD, AnimationId.BATTERY_LOW, messagePoolId = "criticalBattery", mood = CompanionMood.WORRIED,
+        CompanionState.CRITICAL_BATTERY, AnimationId.BATTERY_LOW, messagePoolId = "criticalBattery", mood = CompanionMood.WORRIED,
+        automaticMessageAllowed = !context.preferences.quietHoursActive,
+    ))
+}
+
+object LowBatteryRule : ContextRule {
+    override val id = "low_battery"; override val priority = 95
+    override fun matches(context: AmbientContext) = context.preferences.batteryReactions && context.device.batteryState == BatteryState.LOW
+    override fun result(context: AmbientContext) = CompanionEffect.Persistent(CompanionBehavior(
+        CompanionState.LOW_BATTERY, AnimationId.BATTERY_LOW, messagePoolId = "lowBattery", mood = CompanionMood.TIRED,
         automaticMessageAllowed = !context.preferences.quietHoursActive,
     ))
 }
@@ -44,8 +53,18 @@ object ChargingRule : ContextRule {
     override val id = "charging"; override val priority = 90
     override fun matches(context: AmbientContext) = context.preferences.chargingReactions && context.device.isCharging
     override fun result(context: AmbientContext) = CompanionEffect.Persistent(CompanionBehavior(
-        ContextEngine.determineState(context.environment), AnimationId.CHARGING, accessory = AccessoryId.CHARGING_SPARK,
+        if (context.device.isBatteryFull) CompanionState.BATTERY_FULL else CompanionState.CHARGING,
+        AnimationId.CHARGING, accessory = AccessoryId.CHARGING_SPARK,
         messagePoolId = if (context.device.isBatteryFull) "batteryFull" else "charging", mood = CompanionMood.HAPPY,
+        automaticMessageAllowed = !context.preferences.quietHoursActive,
+    ))
+}
+
+object FullBatteryRule : ContextRule {
+    override val id = "battery_full"; override val priority = 92
+    override fun matches(context: AmbientContext) = context.preferences.batteryReactions && context.device.batteryState == BatteryState.FULL
+    override fun result(context: AmbientContext) = CompanionEffect.Persistent(CompanionBehavior(
+        CompanionState.BATTERY_FULL, AnimationId.BATTERY_FULL, messagePoolId = "batteryFull", mood = CompanionMood.HAPPY,
         automaticMessageAllowed = !context.preferences.quietHoursActive,
     ))
 }
@@ -78,7 +97,7 @@ object WeekendRule : ContextRule {
     override val id = "weekend"; override val priority = 30
     override fun matches(context: AmbientContext) = context.preferences.weekendReactions && context.device.isWeekend
     override fun result(context: AmbientContext) = CompanionEffect.Persistent(CompanionBehavior(
-        ContextEngine.determineState(context.environment), AnimationId.WEEKEND, messagePoolId = "weekend", mood = CompanionMood.PLAYFUL,
+        CompanionState.WEEKEND, AnimationId.WEEKEND, messagePoolId = "weekend", mood = CompanionMood.PLAYFUL,
     ))
 }
 

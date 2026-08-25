@@ -25,6 +25,14 @@ enum class CompanionState {
     STORM,
     FOG,
     SNOW,
+    CRITICAL_BATTERY,
+    LOW_BATTERY,
+    CHARGING,
+    BATTERY_FULL,
+    HEADPHONES,
+    NETWORK_LOST,
+    NETWORK_RESTORED,
+    WEEKEND,
 }
 
 data class CompanionContext(

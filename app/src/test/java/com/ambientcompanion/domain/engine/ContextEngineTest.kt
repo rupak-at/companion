@@ -8,6 +8,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
 
@@ -62,13 +63,18 @@ class ContextEngineTest {
         assertEquals(TimePeriod.NIGHT, TimeClassifier.classify(base + 20 * 3_600, zone, sunrise, sunset))
     }
 
-    @Test fun `every supported condition resolves without exceeding V1 states`() {
+    @Test fun `every supported environment condition resolves with v2 states present`() {
         for (period in TimePeriod.entries) {
             for (weather in WeatherCondition.entries) {
                 ContextEngine.determineState(CompanionContext(period, weather, 20.0, period != TimePeriod.NIGHT))
             }
         }
-        assertEquals(18, CompanionState.entries.size)
+        assertTrue(CompanionState.entries.containsAll(listOf(
+            CompanionState.CRITICAL_BATTERY,
+            CompanionState.CHARGING,
+            CompanionState.HEADPHONES,
+            CompanionState.WEEKEND,
+        )))
     }
 
     @Test fun `message selector avoids an immediate repeat`() {

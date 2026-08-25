@@ -44,6 +44,7 @@ import com.ambientcompanion.domain.rule.CompanionEventType
 import com.ambientcompanion.domain.rule.EventCooldowns
 import com.ambientcompanion.domain.rule.EventQueue
 import com.ambientcompanion.domain.schedule.SchedulePolicy
+import com.ambientcompanion.domain.schedule.OutsideHoursBehavior
 import com.ambientcompanion.renderer.AnimationId
 import com.ambientcompanion.domain.model.CompanionState
 import com.ambientcompanion.screenshot.ScreenshotPermissionActivity
@@ -56,6 +57,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import java.time.LocalTime
+import java.time.ZonedDateTime
 
 class CompanionOverlayService : AccessibilityService() {
     private lateinit var windowManager: WindowManager
@@ -81,7 +83,8 @@ class CompanionOverlayService : AccessibilityService() {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> companionView?.pauseAnimation()
                 Intent.ACTION_SCREEN_ON -> { companionView?.startIdleAnimation(settings.reducedMotion); refreshContext() }
-                Intent.ACTION_CONFIGURATION_CHANGED -> clampToScreen()
+                Intent.ACTION_CONFIGURATION_CHANGED -> { clampToScreen(); refreshContext() }
+                Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED -> refreshContext()
                 ACTION_CONTEXT_UPDATED -> refreshContext(true)
                 ACTION_SETTINGS_UPDATED -> syncVisibility()
                 ACTION_HIDE -> hideCompanion(true)
@@ -179,6 +182,8 @@ class CompanionOverlayService : AccessibilityService() {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_CONFIGURATION_CHANGED)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
             addAction(ACTION_CONTEXT_UPDATED)
             addAction(ACTION_SETTINGS_UPDATED)
         }
@@ -197,6 +202,7 @@ class CompanionOverlayService : AccessibilityService() {
                 settings.idleOpacity,
                 settings.reducedMotion || device.isPowerSaveMode || settings.resourceMode != ResourceMode.NORMAL,
             )
+            companionView?.setTheme(settings.theme)
             val snapshot = app.contextRepository.refresh(force)
             if (android.os.SystemClock.uptimeMillis() >= previewUntil) applyAmbientContext(snapshot.context)
         }
@@ -215,6 +221,11 @@ class CompanionOverlayService : AccessibilityService() {
         val now = LocalTime.now()
         val quiet = settings.quietHoursEnabled && SchedulePolicy.contains(now, settings.quietStartMinutes, settings.quietEndMinutes)
         val outsideActive = settings.activeHoursEnabled && !SchedulePolicy.contains(now, settings.activeStartMinutes, settings.activeEndMinutes)
+        if (outsideActive && settings.outsideHoursBehavior == OutsideHoursBehavior.HIDE_COMPLETELY) {
+            hideCompanion()
+            handler.postDelayed(::syncVisibility, millisUntil(settings.activeStartMinutes))
+            return
+        }
         val rawDevice = app.deviceContextSource.state.value
         val device = rawDevice.copy(
             isWeekend = SchedulePolicy.isWeekend(app.deviceContextSource.state.value.dayOfWeek, settings.weekendDays),
@@ -236,6 +247,7 @@ class CompanionOverlayService : AccessibilityService() {
         companionView?.apply {
             applyState(currentState, settings.reducedMotion || device.isPowerSaveMode)
             setAccessory(resolved.behavior.accessory)
+            if (outsideActive && settings.outsideHoursBehavior == OutsideHoursBehavior.PEEK_FROM_EDGE) alpha = .48f
         }
         val event = eventQueue.poll()
         if (event != null && !quiet) playEvent(event)
@@ -267,6 +279,13 @@ class CompanionOverlayService : AccessibilityService() {
         }
         companionView?.play(animation)
         if (settings.messagesEnabled) showMessage(message)
+    }
+
+    private fun millisUntil(minutes: Int): Long {
+        val now = ZonedDateTime.now()
+        var target = now.withHour(minutes / 60).withMinute(minutes % 60).withSecond(0).withNano(0)
+        if (!target.isAfter(now)) target = target.plusDays(1)
+        return java.time.Duration.between(now, target).toMillis().coerceAtLeast(1_000L)
     }
 
     private fun applyState(state: CompanionState) {

@@ -24,6 +24,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     private var idleOpacity = .72f
     private var reducedMotion = false
     private var accessory: AccessoryId? = null
+    private var theme: String = "default"
     private val mascot = BitmapFactory.decodeResource(resources, R.drawable.companion_mascot)
     private val mascotPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -184,6 +185,14 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             AnimationId.DOUBLE_TAP_SURPRISED -> playSurprisedReaction()
             AnimationId.DRAG -> setDragging(true)
             AnimationId.EDGE_LAND -> setDragging(false)
+            AnimationId.CHARGING, AnimationId.BATTERY_FULL, AnimationId.HEADPHONES,
+            AnimationId.NETWORK_LOST, AnimationId.NETWORK_RESTORED, AnimationId.WEEKEND,
+            AnimationId.TINY_JUMP, AnimationId.WAVE -> {
+                wake(); animate().cancel(); animate().translationY(-resources.displayMetrics.density * 8f)
+                    .rotationBy(8f).setDuration(180).withEndAction {
+                        animate().translationY(0f).rotation(0f).setDuration(260).withEndAction { startIdleAnimation(reducedMotion) }.start()
+                    }.start()
+            }
             else -> startIdleAnimation(reducedMotion)
         }
     }
@@ -192,6 +201,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     override fun setOpacity(value: Float) { idleOpacity = value.coerceIn(.35f, 1f) }
     override fun pause() = pauseAnimation()
     override fun resume() = startIdleAnimation(reducedMotion)
+    fun setTheme(theme: String) { this.theme = theme; invalidate() }
 
     fun applyState(next: CompanionState, reducedMotion: Boolean) {
         if (next == state) return
@@ -279,13 +289,23 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     }
 
     private fun stateTint(state: CompanionState): android.graphics.ColorFilter? = when (state) {
+        CompanionState.CRITICAL_BATTERY -> android.graphics.PorterDuffColorFilter(Color.rgb(210, 120, 130), android.graphics.PorterDuff.Mode.MULTIPLY)
+        CompanionState.LOW_BATTERY -> android.graphics.PorterDuffColorFilter(Color.rgb(235, 185, 125), android.graphics.PorterDuff.Mode.MULTIPLY)
+        CompanionState.CHARGING -> android.graphics.PorterDuffColorFilter(Color.rgb(180, 235, 190), android.graphics.PorterDuff.Mode.MULTIPLY)
+        CompanionState.BATTERY_FULL -> android.graphics.PorterDuffColorFilter(Color.rgb(190, 245, 205), android.graphics.PorterDuff.Mode.MULTIPLY)
         CompanionState.NIGHT_CLEAR, CompanionState.NIGHT_CLOUDY, CompanionState.NIGHT_RAIN,
         CompanionState.NIGHT_SLEEP -> android.graphics.PorterDuffColorFilter(
             Color.argb(205, 170, 160, 230), android.graphics.PorterDuff.Mode.MULTIPLY,
         )
         CompanionState.MORNING_RAIN, CompanionState.DAY_RAIN, CompanionState.EVENING_RAIN ->
             android.graphics.PorterDuffColorFilter(Color.rgb(205, 225, 235), android.graphics.PorterDuff.Mode.MULTIPLY)
-        else -> null
+        else -> when (theme) {
+            "night glow" -> android.graphics.PorterDuffColorFilter(Color.rgb(195, 180, 240), android.graphics.PorterDuff.Mode.MULTIPLY)
+            "warm sunset" -> android.graphics.PorterDuffColorFilter(Color.rgb(255, 205, 175), android.graphics.PorterDuff.Mode.MULTIPLY)
+            "cloud" -> android.graphics.PorterDuffColorFilter(Color.rgb(215, 235, 240), android.graphics.PorterDuff.Mode.MULTIPLY)
+            "mono" -> android.graphics.PorterDuffColorFilter(Color.rgb(205, 205, 205), android.graphics.PorterDuff.Mode.MULTIPLY)
+            else -> null
+        }
     }
 
     private fun colorsFor(state: CompanionState): Pair<Int, Int> = when (state) {

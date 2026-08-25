@@ -41,6 +41,14 @@ class MessageSelector(private val random: Random = Random.Default) {
             put(CompanionState.STORM, messages("Stormy out there ⚡", "Stay cozy and safe"))
             put(CompanionState.FOG, messages("A misty little world", "Take it slow out there"))
             put(CompanionState.SNOW, messages("Snow day ❄️", "Bundle up!"))
+            put(CompanionState.CRITICAL_BATTERY, messages("Need power...", "Feed me 🔌"))
+            put(CompanionState.LOW_BATTERY, messages("Feed me 🔌", "Tiny power nap?"))
+            put(CompanionState.CHARGING, messages("Charging up!"))
+            put(CompanionState.BATTERY_FULL, messages("All full!"))
+            put(CompanionState.HEADPHONES, messages("Music time?"))
+            put(CompanionState.NETWORK_LOST, messages("Lost connection?"))
+            put(CompanionState.NETWORK_RESTORED, messages("Back online!"))
+            put(CompanionState.WEEKEND, messages("Weekend energy!"))
         }
     }
 }
