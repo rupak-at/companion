@@ -18,6 +18,31 @@ class RuleEngineTest {
     @Test fun `quiet hours suppress automatic message`() = assertFalse(RuleEngine().resolve(context(quiet = true)).behavior.automaticMessageAllowed)
     @Test fun `weekend wins over normal environment`() = assertEquals("weekend", RuleEngine().resolve(context(weekend = true, weather = WeatherCondition.CLEAR)).winningRuleId)
 
+    @Test fun `full battery wins over storm`() {
+        val base = context(weather = WeatherCondition.STORM)
+        val result = RuleEngine().resolve(base.copy(device = base.device.copy(batteryPercent = 100, isBatteryFull = true)))
+        assertEquals("battery_full", result.winningRuleId)
+        assertEquals(CompanionState.BATTERY_FULL, result.behavior.visualState)
+    }
+
+    @Test fun `low battery wins during quiet hours but suppresses automatic copy`() {
+        val result = RuleEngine().resolve(context(battery = 15, quiet = true))
+        assertEquals("low_battery", result.winningRuleId)
+        assertFalse(result.behavior.automaticMessageAllowed)
+    }
+
+    @Test fun `rain wins over weekend and supplies umbrella`() {
+        val result = RuleEngine().resolve(context(weekend = true, weather = WeatherCondition.RAIN))
+        assertEquals("weather", result.winningRuleId)
+        assertEquals(com.ambientcompanion.renderer.AccessoryId.UMBRELLA, result.behavior.accessory)
+    }
+
+    @Test fun `weekend remains persistent while offline`() {
+        val base = context(weekend = true, weather = WeatherCondition.CLEAR)
+        val result = RuleEngine().resolve(base.copy(device = base.device.copy(networkState = NetworkState.OFFLINE)))
+        assertEquals("weekend", result.winningRuleId)
+    }
+
     @Test fun `event queue is bounded deduplicated and expires`() {
         var now = 1_000L
         val queue = EventQueue(3) { now }

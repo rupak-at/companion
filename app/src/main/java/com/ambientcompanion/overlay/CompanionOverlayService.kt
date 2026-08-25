@@ -299,18 +299,26 @@ class CompanionOverlayService : AccessibilityService() {
     }
 
     private fun playEvent(event: CompanionEvent) {
-        val (animation, message) = when (event.type) {
-            CompanionEventType.BATTERY_LOW -> AnimationId.BATTERY_LOW to "Feed me 🔌"
-            CompanionEventType.BATTERY_CRITICAL -> AnimationId.BATTERY_LOW to "Need power..."
-            CompanionEventType.CHARGING_STARTED -> AnimationId.CHARGING to "Charging up!"
-            CompanionEventType.CHARGING_STOPPED -> AnimationId.STATE_TRANSITION to "Unplugged"
-            CompanionEventType.BATTERY_FULL -> AnimationId.BATTERY_FULL to "All full!"
-            CompanionEventType.HEADPHONES_CONNECTED -> AnimationId.HEADPHONES to "Music time?"
-            CompanionEventType.NETWORK_LOST -> AnimationId.NETWORK_LOST to "Lost connection?"
-            CompanionEventType.NETWORK_RESTORED -> AnimationId.NETWORK_RESTORED to "Back online!"
+        val (animation, message, visual) = when (event.type) {
+            CompanionEventType.BATTERY_LOW -> Triple(AnimationId.BATTERY_LOW, "Feed me 🔌", CompanionState.LOW_BATTERY)
+            CompanionEventType.BATTERY_CRITICAL -> Triple(AnimationId.BATTERY_LOW, "Need power...", CompanionState.CRITICAL_BATTERY)
+            CompanionEventType.CHARGING_STARTED -> Triple(AnimationId.CHARGING, "Charging up!", CompanionState.CHARGING)
+            CompanionEventType.CHARGING_STOPPED -> Triple(AnimationId.STATE_TRANSITION, "Unplugged", currentState)
+            CompanionEventType.BATTERY_FULL -> Triple(AnimationId.BATTERY_FULL, "All full!", CompanionState.BATTERY_FULL)
+            CompanionEventType.HEADPHONES_CONNECTED -> Triple(AnimationId.HEADPHONES, "Music time?", CompanionState.HEADPHONES)
+            CompanionEventType.NETWORK_LOST -> Triple(AnimationId.NETWORK_LOST, "Lost connection?", CompanionState.NETWORK_LOST)
+            CompanionEventType.NETWORK_RESTORED -> Triple(AnimationId.NETWORK_RESTORED, "Back online!", CompanionState.NETWORK_RESTORED)
         }
         eventInFlight = true
         currentAnimation = animation
+        renderer?.setState(visual)
+        val temporaryAccessory = when (event.type) {
+            CompanionEventType.HEADPHONES_CONNECTED -> com.ambientcompanion.renderer.AccessoryId.HEADPHONES
+            CompanionEventType.CHARGING_STARTED, CompanionEventType.BATTERY_FULL -> com.ambientcompanion.renderer.AccessoryId.CHARGING_SPARK
+            else -> null
+        }
+        renderer?.setAccessory(temporaryAccessory)
+        currentAccessory = temporaryAccessory
         playAnimation(animation, AnimationPhase.AUTOMATIC)
         if (settings.messagesEnabled) showMessage(message)
         handler.postDelayed({
