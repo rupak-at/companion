@@ -249,8 +249,14 @@ class CompanionOverlayService : AccessibilityService() {
     private fun trackWellbeingEvent(event: AccessibilityEvent, previousPackage: String?) {
         if (!settings.screenAwarenessEnabled || !settings.wellbeingTrackingEnabled) return
         val packageName = foregroundPackage ?: return
-        if (packageName in settings.excludedWellbeingApps) return
         val now = android.os.SystemClock.elapsedRealtime()
+        if (packageName in settings.excludedWellbeingApps) {
+            recordActiveTime(now)
+            sessionTracker.foreground(null, screenActive, now)
+            scrollTracker.reset()
+            wellbeingContext = WellbeingContext.EMPTY
+            return
+        }
         val today = java.time.LocalDate.now()
         if (packageName != previousPackage) {
             recordActiveTime(now)
@@ -364,7 +370,8 @@ class CompanionOverlayService : AccessibilityService() {
         val screen = screenSize()
         val keyboardVisible = windows.any { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
         val root = rootInActiveWindow
-        val snapshot = screenSnapshotBuilder.build(
+        foregroundPackage = root?.packageName?.toString() ?: foregroundPackage
+        val baseSnapshot = screenSnapshotBuilder.build(
             root = root,
             packageName = foregroundPackage,
             screenWidth = screen.x,
@@ -373,6 +380,12 @@ class CompanionOverlayService : AccessibilityService() {
             fullScreen = isLikelyFullscreen(root),
             secureWindow = root == null && foregroundPackage != null,
         )
+        val cutoutBounds = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            companionView?.rootWindowInsets?.displayCutout?.boundingRects.orEmpty().map {
+                ScreenBounds(it.left, it.top, it.right, it.bottom)
+            }
+        } else emptyList()
+        val snapshot = baseSnapshot.copy(importantBounds = (baseSnapshot.importantBounds + cutoutBounds).take(12))
         currentScreenContext = app.screenContextSource.update(snapshot, settings.sensitiveScreenModeEnabled)
         applyScreenBehavior(currentScreenContext)
         pendingScreenRefresh = ContextRefreshLevel.LIGHT

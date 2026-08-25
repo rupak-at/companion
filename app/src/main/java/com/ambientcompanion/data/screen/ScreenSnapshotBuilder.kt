@@ -110,8 +110,11 @@ class ScreenSnapshotBuilder(private val maxNodes: Int = 500) {
                 hasLargeMediaSurface = hasLargeMedia,
                 isKeyboardVisible = keyboard,
                 isFullScreen = fullscreen,
-                isSecureWindow = secure,
-                orientation = if (screenWidth > screenHeight) ScreenOrientation.LANDSCAPE else ScreenOrientation.PORTRAIT,
+            isSecureWindow = secure,
+            isHomeScreen = packageName?.let { name ->
+                name.contains("launcher", ignoreCase = true) || name.contains("homescreen", ignoreCase = true)
+            } == true,
+            orientation = if (screenWidth > screenHeight) ScreenOrientation.LANDSCAPE else ScreenOrientation.PORTRAIT,
             )
 
         private fun AccessibilityNodeInfo.bounds(): ScreenBounds = Rect().also(::getBoundsInScreen).let {
