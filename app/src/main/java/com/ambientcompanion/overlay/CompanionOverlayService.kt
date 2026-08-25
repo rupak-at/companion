@@ -29,7 +29,9 @@ import com.ambientcompanion.MainActivity
 import com.ambientcompanion.AmbientApplication
 import com.ambientcompanion.data.preferences.UserSettings
 import com.ambientcompanion.accessibility.AssistiveAction
-import com.ambientcompanion.domain.engine.MessageSelector
+import com.ambientcompanion.domain.message.MessageEngine
+import com.ambientcompanion.domain.message.MessagePackId
+import com.ambientcompanion.domain.message.MessageRequest
 import com.ambientcompanion.domain.context.AmbientContext
 import com.ambientcompanion.domain.context.CompanionPreferences
 import com.ambientcompanion.domain.context.BatteryState
@@ -61,7 +63,7 @@ class CompanionOverlayService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val app by lazy { application as AmbientApplication }
-    private val messageSelector = MessageSelector()
+    private val messageEngine = MessageEngine()
     private val ruleEngine = RuleEngine()
     private val eventQueue = EventQueue()
     private val eventCooldowns = EventCooldowns()
@@ -291,8 +293,8 @@ class CompanionOverlayService : AccessibilityService() {
     private suspend fun maybeShowAutomaticMessage(state: CompanionState) {
         if (!settings.messagesEnabled || !settings.automaticMessages) return
         val (lastId, lastAt) = app.preferences.lastMessage()
-        if (System.currentTimeMillis() - lastAt < AUTO_MESSAGE_INTERVAL_MS) return
-        val selected = messageSelector.select(state, lastId)
+        if (System.currentTimeMillis() - lastAt < messageEngine.automaticIntervalMs(settings.personality)) return
+        val selected = messageEngine.select(MessageRequest(state, settings.personality, settings.messagePackId(), lastId, millisSinceLastTap = 0))
         showMessage(selected.text)
         app.preferences.saveLastMessage(selected.id, System.currentTimeMillis())
     }
@@ -312,7 +314,8 @@ class CompanionOverlayService : AccessibilityService() {
                     view.performClick()
                     if (settings.messagesEnabled) serviceScope.launch {
                         val (lastId) = app.preferences.lastMessage()
-                        val selected = messageSelector.select(currentState, lastId)
+                        val tap = app.preferences.recordTap()
+                        val selected = messageEngine.select(MessageRequest(currentState, settings.personality, settings.messagePackId(), lastId, tap.tapsToday, tap.lastTapAt?.let { System.currentTimeMillis() - it }))
                         showMessage(selected.text)
                         app.preferences.saveLastMessage(selected.id, System.currentTimeMillis())
                     }
@@ -578,7 +581,6 @@ class CompanionOverlayService : AccessibilityService() {
         const val EXTRA_STATE = "companion_state"
         const val ACTION_HIDE = "com.ambientcompanion.action.HIDE"
         const val ACTION_RESET_POSITION = "com.ambientcompanion.action.RESET_POSITION"
-        private const val AUTO_MESSAGE_INTERVAL_MS = 60 * 60 * 1000L
         private const val PREVIEW_DURATION_MS = 10_000L
         private const val TAP_WINDOW_MS = 360L
         private val contextMessages = listOf("You've got this ✨", "Nice to see you!", "Hope your day's going well")
@@ -599,3 +601,7 @@ class CompanionOverlayService : AccessibilityService() {
         }
     }
 }
+
+private fun UserSettings.messagePackId(): MessagePackId = runCatching {
+    MessagePackId.valueOf(messagePack.uppercase())
+}.getOrDefault(MessagePackId.DEFAULT)

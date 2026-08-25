@@ -14,6 +14,7 @@ import com.ambientcompanion.domain.context.Personality
 import com.ambientcompanion.domain.context.ResourceMode
 import com.ambientcompanion.domain.schedule.OutsideHoursBehavior
 import java.time.DayOfWeek
+import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -194,6 +195,17 @@ class AppPreferences(private val context: Context) {
         it[LAST_MESSAGE_ID] to (it[LAST_MESSAGE_AT] ?: 0L)
     }
 
+    data class TapRecord(val tapsToday: Int, val lastTapAt: Long?)
+
+    suspend fun recordTap(timestamp: Long = System.currentTimeMillis()): TapRecord {
+        val today = LocalDate.now().toString()
+        val values = context.dataStore.data.first()
+        val oldTimestamp = values[LAST_TAP_AT]
+        val count = if (values[TAP_DATE] == today) (values[TAPS_TODAY] ?: 0) + 1 else 1
+        context.dataStore.edit { it[TAP_DATE] = today; it[TAPS_TODAY] = count; it[LAST_TAP_AT] = timestamp }
+        return TapRecord(count, oldTimestamp)
+    }
+
     companion object {
         private val SCHEMA_VERSION = intPreferencesKey("settings_schema_version")
         private val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
@@ -237,6 +249,9 @@ class AppPreferences(private val context: Context) {
         private val CACHE_FETCHED_AT = longPreferencesKey("cache_fetched_at")
         private val LAST_MESSAGE_ID = stringPreferencesKey("last_message_id")
         private val LAST_MESSAGE_AT = longPreferencesKey("last_message_at")
+        private val TAP_DATE = stringPreferencesKey("tap_date")
+        private val TAPS_TODAY = intPreferencesKey("taps_today")
+        private val LAST_TAP_AT = longPreferencesKey("last_tap_at")
         const val MIN_COMPANION_SIZE_DP = 40
         const val MAX_COMPANION_SIZE_DP = 160
     }
