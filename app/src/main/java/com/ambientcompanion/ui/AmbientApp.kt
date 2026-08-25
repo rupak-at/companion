@@ -36,6 +36,7 @@ import com.ambientcompanion.domain.context.Personality
 import com.ambientcompanion.domain.context.ResourceMode
 import com.ambientcompanion.domain.behavior.QuickAction
 import com.ambientcompanion.domain.schedule.OutsideHoursBehavior
+import com.ambientcompanion.data.preferences.SettingsMigration
 import java.time.DayOfWeek
 import kotlin.math.roundToInt
 
@@ -70,12 +71,35 @@ fun AmbientApp(
                 hasAccessibilityPermission,
                 onCompleteOnboarding,
             )
+        } else if (settings.schemaVersion < SettingsMigration.CURRENT_SCHEMA_VERSION) {
+            WhatsNew { onUpdateSettings { SettingsMigration.migrate(it) } }
         } else when (screen) {
             AppScreen.HOME -> Home(settings, snapshot, overlayRunning, hasAccessibilityPermission, onToggleCompanion, onOpenAccessibilitySettings, onRefresh, onNavigate)
             AppScreen.CUSTOMIZE -> Customize(settings, onUpdateSettings, onNavigate)
             AppScreen.SETTINGS -> Settings(settings, onToggleCompanion, onUpdateSettings, onResetPosition, onAddQuickTile, onOpenAccessibilitySettings, onRefresh, onNavigate)
             AppScreen.PREVIEW -> Preview(settings, onPreviewState, onNavigate)
             AppScreen.DEBUG -> Debug(settings, snapshot, onPreviewState, onNavigate)
+        }
+    }
+}
+
+@Composable
+private fun WhatsNew(continueToApp: () -> Unit) {
+    PremiumBackground {
+        Column(
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Mascot(CompanionState.WEEKEND, 148)
+            Spacer(Modifier.height(28.dp))
+            Text("What’s new in V2", color = Ink, fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(18.dp))
+            listOf("Animated companion", "Battery & charging reactions", "Headphone reactions", "Quiet hours", "New personalities and themes").forEach {
+                Text("✓  $it", color = MutedInk, fontSize = 16.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
+            }
+            Spacer(Modifier.height(28.dp))
+            PrimaryButton("Continue", continueToApp)
         }
     }
 }
@@ -274,7 +298,7 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         item { ActionCard("Quick Settings button", "Add a system-area show/hide control", addQuickTile) }
         item { ActionCard("Refresh weather", "Update environmental context", refresh) }
         item { SectionLabel("ABOUT") }
-        item { ActionCard("Ambient Companion", "Version 0.1.0") { taps++; if (taps >= 7) navigate(AppScreen.DEBUG) } }
+        item { ActionCard("Ambient Companion", "Version 0.2.0") { taps++; if (taps >= 7) navigate(AppScreen.DEBUG) } }
     }
 }
 

@@ -79,7 +79,7 @@ class AppPreferences(private val context: Context) {
     private val updateMutex = Mutex()
     val settings: Flow<UserSettings> = context.dataStore.data.map { values ->
         UserSettings(
-            schemaVersion = values[SCHEMA_VERSION] ?: SettingsMigration.CURRENT_SCHEMA_VERSION,
+            schemaVersion = values[SCHEMA_VERSION] ?: 1,
             onboardingComplete = values[ONBOARDING_COMPLETE] ?: false,
             companionEnabled = values[COMPANION_ENABLED] ?: false,
             messagesEnabled = values[MESSAGES_ENABLED] ?: true,
