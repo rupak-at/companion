@@ -215,6 +215,8 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             AnimationId.MESSAGE_SHOW -> animate().scaleX(1.06f).scaleY(1.06f).setDuration(160).start()
             AnimationId.MESSAGE_HIDE -> animate().scaleX(1f).scaleY(1f).setDuration(160).start()
             AnimationId.STATE_TRANSITION -> animate().alpha(.7f).setDuration(120).withEndAction { animate().alpha(1f).setDuration(180).start() }.start()
+            AnimationId.TIRED -> animate().scaleY(.92f).rotation(-3f).setDuration(500).start()
+            AnimationId.EXHAUSTED -> animate().scaleY(.82f).rotation(-8f).translationY(resources.displayMetrics.density * 5f).setDuration(650).start()
             AnimationId.CHARGING, AnimationId.BATTERY_FULL, AnimationId.HEADPHONES,
             AnimationId.NETWORK_LOST, AnimationId.NETWORK_RESTORED, AnimationId.WEEKEND,
             AnimationId.TINY_JUMP, AnimationId.WAVE -> {

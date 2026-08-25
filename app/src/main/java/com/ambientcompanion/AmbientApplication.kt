@@ -17,6 +17,7 @@ import com.ambientcompanion.data.preferences.UserSettings
 import com.ambientcompanion.data.profile.AppCategoryResolver
 import com.ambientcompanion.data.profile.AppProfileRepository
 import com.ambientcompanion.data.screen.ScreenContextSource
+import com.ambientcompanion.data.wellbeing.WellbeingRepository
 import com.ambientcompanion.domain.context.ResourceMode
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.TimeUnit
@@ -44,12 +45,15 @@ class AmbientApplication : Application() {
         private set
     lateinit var screenContextSource: ScreenContextSource
         private set
+    lateinit var wellbeingRepository: WellbeingRepository
+        private set
 
     override fun onCreate() {
         super.onCreate()
         preferences = AppPreferences(this)
         appProfileRepository = AppProfileRepository(this)
         screenContextSource = ScreenContextSource(AppCategoryResolver(), appProfileRepository)
+        wellbeingRepository = WellbeingRepository(this)
         deviceContextSource = DeviceContextSource(this).also { it.start() }
         val client = OkHttpClient.Builder()
             .addInterceptor(HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BASIC))

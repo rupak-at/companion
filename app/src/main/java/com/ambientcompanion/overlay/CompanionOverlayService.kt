@@ -60,6 +60,15 @@ import com.ambientcompanion.domain.screen.CompanionDisplayMode
 import com.ambientcompanion.domain.screen.ScreenAction
 import com.ambientcompanion.domain.screen.ScreenBounds
 import com.ambientcompanion.domain.screen.ScreenContext
+import com.ambientcompanion.domain.wellbeing.AppOpenTracker
+import com.ambientcompanion.domain.wellbeing.ScrollTracker
+import com.ambientcompanion.domain.wellbeing.SessionTracker
+import com.ambientcompanion.domain.wellbeing.WellbeingContext
+import com.ambientcompanion.domain.wellbeing.WellbeingReaction
+import com.ambientcompanion.domain.wellbeing.WellbeingReactionEngine
+import com.ambientcompanion.domain.attention.AttentionEngine
+import com.ambientcompanion.domain.attention.AttentionInput
+import com.ambientcompanion.domain.attention.AttentionLevel
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
@@ -91,12 +100,22 @@ class CompanionOverlayService : AccessibilityService() {
     private val accessibilityEventProcessor = AccessibilityEventProcessor()
     private val screenSnapshotBuilder = ScreenSnapshotBuilder()
     private val smartPositionController = SmartPositionController()
+    private val sessionTracker = SessionTracker()
+    private val scrollTracker = ScrollTracker()
+    private val appOpenTracker = AppOpenTracker()
+    private val wellbeingReactionEngine = WellbeingReactionEngine()
+    private val attentionEngine = AttentionEngine()
     private var pendingScreenRefresh = ContextRefreshLevel.FULL
     private var foregroundPackage: String? = null
     private var currentScreenContext = ScreenContext.EMPTY
     private var smartPositionActive = false
     private var positionBeforeSmartMove: Pair<Int, Int>? = null
     private var screenQuietUntil = 0L
+    private var wellbeingContext = WellbeingContext.EMPTY
+    private var lastWellbeingReaction: String? = null
+    private var attentionExplanation = "No V3 attention decision yet"
+    private val dailyActiveMs = mutableMapOf<String, Long>()
+    private var recordedSessionActiveMs = 0L
     private val screenContextRefresh = Runnable { rebuildScreenContext() }
     private var lastDeviceContext: com.ambientcompanion.domain.context.DeviceContext? = null
     private var lastBatteryState: BatteryState? = null
@@ -119,11 +138,14 @@ class CompanionOverlayService : AccessibilityService() {
                     eventInFlight = false
                     animationStateMachine.pause()
                     renderer?.pause()
+                    sessionTracker.screenOff(android.os.SystemClock.elapsedRealtime())
+                    updateWellbeingSnapshot()
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     screenActive = true
                     animationStateMachine.resume()
                     renderer?.resume()
+                    sessionTracker.foreground(foregroundPackage, true, android.os.SystemClock.elapsedRealtime())
                     refreshContext()
                 }
                 Intent.ACTION_CONFIGURATION_CHANGED -> { clampToScreen(); refreshContext() }
@@ -143,6 +165,7 @@ class CompanionOverlayService : AccessibilityService() {
         instance = this
         registerSystemReceiver()
         observeDeviceContext()
+        restoreWellbeingState()
         syncVisibility()
     }
 
@@ -181,7 +204,9 @@ class CompanionOverlayService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
+        val previousPackage = foregroundPackage
         foregroundPackage = event.packageName?.toString() ?: foregroundPackage
+        trackWellbeingEvent(event, previousPackage)
         if (!settings.screenAwarenessEnabled || foregroundPackage in settings.excludedScreenApps) {
             app.screenContextSource.clear()
             return
@@ -195,6 +220,113 @@ class CompanionOverlayService : AccessibilityService() {
             accessibilityEventProcessor.debounceMs(level, app.deviceContextSource.state.value.isPowerSaveMode),
         )
     }
+
+    private fun restoreWellbeingState() {
+        val today = java.time.LocalDate.now()
+        val stored = app.wellbeingRepository.load(today)
+        appOpenTracker.restore(today, stored.appOpenCounts)
+        dailyActiveMs.putAll(stored.activeMinutes.mapValues { it.value * 60_000L })
+    }
+
+    private fun trackWellbeingEvent(event: AccessibilityEvent, previousPackage: String?) {
+        if (!settings.screenAwarenessEnabled || !settings.wellbeingTrackingEnabled) return
+        val packageName = foregroundPackage ?: return
+        if (packageName in settings.excludedWellbeingApps) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        val today = java.time.LocalDate.now()
+        if (packageName != previousPackage) {
+            recordActiveTime(now)
+            sessionTracker.foreground(packageName, screenActive, now)
+            recordedSessionActiveMs = 0L
+            val count = appOpenTracker.foreground(packageName, today)
+            app.wellbeingRepository.saveOpens(today, appOpenTracker.snapshot(today))
+            if (settings.appOpenReactionsEnabled) {
+                wellbeingReactionEngine.appOpenReaction(count, settings.wellbeingReactionStyle)?.let(::offerWellbeingReaction)
+            }
+        }
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
+                sessionTracker.interaction(now)
+                val scroll = scrollTracker.scroll(now)
+                updateWellbeingSnapshot(scroll.durationMs, scroll.eventCount)
+                if (settings.longScrollRemindersEnabled) wellbeingReactionEngine.scrollReaction(
+                    scroll.durationMs,
+                    settings.wellbeingReactionStyle,
+                    settings.firstScrollReminderMinutes,
+                    settings.strongScrollReminderMinutes,
+                )?.let(::offerWellbeingReaction)
+            }
+            AccessibilityEvent.TYPE_VIEW_FOCUSED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> sessionTracker.interaction(now)
+        }
+        updateWellbeingSnapshot()
+    }
+
+    private fun updateWellbeingSnapshot(scrollDuration: Long? = null, scrollCount: Int? = null) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        recordActiveTime(now)
+        val session = sessionTracker.snapshot(now)
+        val scroll = scrollTracker.snapshot(now)
+        wellbeingContext = session.copy(
+            continuousScrollDurationMs = scrollDuration ?: scroll.durationMs,
+            scrollEventCount = scrollCount ?: scroll.eventCount,
+            appOpenCountToday = appOpenTracker.count(session.currentAppPackage, java.time.LocalDate.now()),
+            appActiveMinutesToday = (dailyActiveMs[session.currentAppPackage] ?: 0L).div(60_000).toInt(),
+        )
+    }
+
+    private fun recordActiveTime(now: Long) {
+        val snapshot = sessionTracker.snapshot(now)
+        val packageName = snapshot.currentAppPackage ?: return
+        val delta = (snapshot.activeSessionDurationMs - recordedSessionActiveMs).coerceAtLeast(0)
+        if (delta == 0L) return
+        dailyActiveMs[packageName] = (dailyActiveMs[packageName] ?: 0L) + delta
+        recordedSessionActiveMs = snapshot.activeSessionDurationMs
+        app.wellbeingRepository.saveActiveMinutes(
+            java.time.LocalDate.now(),
+            dailyActiveMs.mapValues { (_, value) -> (value / 60_000).toInt() },
+        )
+    }
+
+    private fun offerWellbeingReaction(reaction: WellbeingReaction) {
+        val packageName = foregroundPackage ?: return
+        val today = java.time.LocalDate.now()
+        val reactionKey = "$packageName:${reaction.id}"
+        if (reactionKey in app.wellbeingRepository.load(today).deliveredReactionIds) return
+        val profile = app.appProfileRepository.profileFor(packageName, currentScreenContext.appCategory)
+        if (!profile.allowWellbeingReactions) return
+        val decision = attentionDecision(reaction.attention, profile.allowMessages)
+        attentionExplanation = if (decision.suppressionReasons.isEmpty()) {
+            "${reaction.attention}: allowed"
+        } else {
+            "Suppressed: ${decision.suppressionReasons.joinToString()}"
+        }
+        if (decision.allowAnimation) playAnimation(
+            if (reaction.thresholdMinutes >= 90) AnimationId.EXHAUSTED else AnimationId.TIRED,
+            AnimationPhase.AUTOMATIC,
+        )
+        if (decision.allowMessage) reaction.message?.let(::showMessage)
+        if (decision.allowMessage || decision.allowAnimation) {
+            lastWellbeingReaction = reactionKey
+            app.wellbeingRepository.markReaction(today, reactionKey)
+        }
+    }
+
+    private fun attentionDecision(level: AttentionLevel, profileAllowsMessages: Boolean = true) = attentionEngine.decide(
+        AttentionInput(
+            requestedLevel = level,
+            quietHours = settings.quietHoursEnabled && SchedulePolicy.contains(
+                LocalTime.now(), settings.quietStartMinutes, settings.quietEndMinutes,
+            ),
+            sensitive = currentScreenContext.isSensitive,
+            profileAllowsMessages = profileAllowsMessages,
+            personality = settings.personality,
+            resourceMode = settings.resourceMode,
+            screenOn = screenActive,
+        ),
+    )
+
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
@@ -462,7 +594,10 @@ class CompanionOverlayService : AccessibilityService() {
         renderer?.setAccessory(temporaryAccessory)
         currentAccessory = temporaryAccessory
         playAnimation(animation, AnimationPhase.AUTOMATIC)
-        if (settings.messagesEnabled) showMessage(message)
+        val attention = if (event.type == CompanionEventType.BATTERY_CRITICAL) AttentionLevel.IMPORTANT else AttentionLevel.NORMAL
+        val decision = attentionDecision(attention)
+        attentionExplanation = if (decision.suppressionReasons.isEmpty()) "$attention: allowed" else "Suppressed: ${decision.suppressionReasons.joinToString()}"
+        if (settings.messagesEnabled && decision.allowMessage) showMessage(message)
         handler.postDelayed({
             eventInFlight = false
             currentAnimation = AnimationId.IDLE
@@ -549,6 +684,11 @@ class CompanionOverlayService : AccessibilityService() {
         if (!settings.messagesEnabled || !settings.automaticMessages || currentScreenContext.isSensitive ||
             System.currentTimeMillis() < screenQuietUntil || profile?.allowMessages == false
         ) return
+        val decision = attentionDecision(AttentionLevel.NORMAL, profile?.allowMessages != false)
+        if (!decision.allowMessage) {
+            attentionExplanation = "Automatic message suppressed: ${decision.suppressionReasons.joinToString()}"
+            return
+        }
         val (lastId, lastAt) = app.preferences.lastMessage()
         if (System.currentTimeMillis() - lastAt < messageEngine.automaticIntervalMs(settings.personality)) return
         val selected = messageEngine.select(MessageRequest(state, settings.personality, settings.messagePackId(), lastId, millisSinceLastTap = 0))
