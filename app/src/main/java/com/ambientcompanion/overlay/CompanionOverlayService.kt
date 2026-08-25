@@ -276,6 +276,7 @@ class CompanionOverlayService : AccessibilityService() {
         renderer?.setState(currentState)
         renderer?.setAccessory(resolved.behavior.accessory)
         animationStateMachine.finish()
+        playAnimation(resolved.behavior.idleAnimation, AnimationPhase.AUTOMATIC)
         currentAccessory = resolved.behavior.accessory
         if (outsideActive && settings.outsideHoursBehavior == OutsideHoursBehavior.PEEK_FROM_EDGE) companionView?.alpha = .48f
         val event = if (eventInFlight) null else eventQueue.poll()

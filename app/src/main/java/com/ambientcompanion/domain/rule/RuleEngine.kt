@@ -104,8 +104,26 @@ object WeekendRule : ContextRule {
 object EnvironmentRule : ContextRule {
     override val id = "environment"; override val priority = 20
     override fun matches(context: AmbientContext) = true
-    override fun result(context: AmbientContext) = CompanionEffect.Persistent(CompanionBehavior(
-        ContextEngine.determineState(context.environment), messagePoolId = "environment",
-        automaticMessageAllowed = !context.preferences.quietHoursActive,
-    ))
+    override fun result(context: AmbientContext): CompanionEffect.Persistent {
+        val state = ContextEngine.determineState(context.environment)
+        val animation = when (state) {
+            CompanionState.MORNING_RAIN, CompanionState.DAY_RAIN, CompanionState.EVENING_RAIN,
+            CompanionState.NIGHT_RAIN, CompanionState.STORM -> AnimationId.RAIN
+            CompanionState.COLD, CompanionState.SNOW -> AnimationId.COLD
+            CompanionState.DAY_HOT -> AnimationId.HOT
+            CompanionState.NIGHT_SLEEP -> AnimationId.SLEEP
+            else -> AnimationId.IDLE
+        }
+        val accessory = when (state) {
+            CompanionState.MORNING_RAIN, CompanionState.DAY_RAIN, CompanionState.EVENING_RAIN,
+            CompanionState.NIGHT_RAIN -> AccessoryId.UMBRELLA
+            CompanionState.COLD, CompanionState.SNOW -> AccessoryId.SCARF
+            CompanionState.NIGHT_SLEEP -> AccessoryId.SLEEP_CAP
+            else -> null
+        }
+        return CompanionEffect.Persistent(CompanionBehavior(
+            state, idleAnimation = animation, messagePoolId = "environment", accessory = accessory,
+            automaticMessageAllowed = !context.preferences.quietHoursActive,
+        ))
+    }
 }

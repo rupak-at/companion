@@ -183,11 +183,31 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     override fun setState(state: CompanionState) = applyState(state, reducedMotion)
 
     override fun play(animation: AnimationId) {
+        if (appearance == CompanionAppearance.EMOJI && animation !in setOf(
+                AnimationId.TAP_HAPPY, AnimationId.DOUBLE_TAP_SURPRISED,
+                AnimationId.DRAG, AnimationId.EDGE_LAND,
+            )
+        ) {
+            startIdleAnimation(true)
+            return
+        }
         when (animation) {
+            AnimationId.BLINK -> animate().scaleY(.94f).setDuration(90).withEndAction { animate().scaleY(1f).setDuration(110).start() }.start()
+            AnimationId.LOOK_LEFT -> animate().translationX(-resources.displayMetrics.density * 4f).setDuration(220).withEndAction { animate().translationX(0f).setDuration(220).start() }.start()
+            AnimationId.LOOK_RIGHT -> animate().translationX(resources.displayMetrics.density * 4f).setDuration(220).withEndAction { animate().translationX(0f).setDuration(220).start() }.start()
             AnimationId.TAP_HAPPY -> playHappyReaction()
             AnimationId.DOUBLE_TAP_SURPRISED -> playSurprisedReaction()
             AnimationId.DRAG -> setDragging(true)
             AnimationId.EDGE_LAND -> setDragging(false)
+            AnimationId.SLEEP -> animate().rotation(-5f).scaleY(.94f).alpha(.78f).setDuration(500).start()
+            AnimationId.WAKE_UP -> { wake(); animate().rotation(0f).scaleY(1f).alpha(1f).setDuration(350).start() }
+            AnimationId.BATTERY_LOW -> animate().translationY(resources.displayMetrics.density * 4f).rotation(-4f).setDuration(450).start()
+            AnimationId.RAIN -> animate().rotationBy(-3f).setDuration(180).withEndAction { animate().rotation(0f).setDuration(180).start() }.start()
+            AnimationId.COLD -> animate().translationX(resources.displayMetrics.density * 2f).setDuration(80).withEndAction { animate().translationX(-resources.displayMetrics.density * 2f).setDuration(80).withEndAction { animate().translationX(0f).setDuration(80).start() }.start() }.start()
+            AnimationId.HOT -> animate().scaleY(.95f).scaleX(1.04f).setDuration(350).withEndAction { animate().scaleX(1f).scaleY(1f).setDuration(350).start() }.start()
+            AnimationId.MESSAGE_SHOW -> animate().scaleX(1.06f).scaleY(1.06f).setDuration(160).start()
+            AnimationId.MESSAGE_HIDE -> animate().scaleX(1f).scaleY(1f).setDuration(160).start()
+            AnimationId.STATE_TRANSITION -> animate().alpha(.7f).setDuration(120).withEndAction { animate().alpha(1f).setDuration(180).start() }.start()
             AnimationId.CHARGING, AnimationId.BATTERY_FULL, AnimationId.HEADPHONES,
             AnimationId.NETWORK_LOST, AnimationId.NETWORK_RESTORED, AnimationId.WEEKEND,
             AnimationId.TINY_JUMP, AnimationId.WAVE -> {
