@@ -16,7 +16,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -387,7 +386,21 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         item { Text("←  Back", color = Aubergine, modifier = Modifier.clickable(onClick = back).padding(vertical = 8.dp)) }; item { Text(title, color = Ink, fontSize = 34.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 12.dp)) }; content()
     } }
 }
-@Composable private fun PremiumBackground(content: @Composable BoxScope.() -> Unit) = Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Porcelain, Color(0xFFFFFDF9))))) { Canvas(Modifier.size(280.dp).align(Alignment.TopEnd).blur(48.dp)) { drawCircle(Color(0x22FFB86B), size.minDimension * .46f) }; content() }
+@Composable private fun PremiumBackground(content: @Composable BoxScope.() -> Unit) = Box(
+    Modifier.fillMaxSize().background(
+        Brush.verticalGradient(listOf(Porcelain, Color(0xFFFFFDF9))),
+    ),
+) {
+    Box(
+        Modifier.size(280.dp).align(Alignment.TopEnd).background(
+            Brush.radialGradient(
+                colors = listOf(Color(0x22FFB86B), Color.Transparent),
+                radius = 280f,
+            ),
+        ),
+    )
+    content()
+}
 @Composable private fun BrandMark() = Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(28.dp).background(Aubergine, CircleShape), contentAlignment = Alignment.Center) { Text("•ᴗ•", color = Amber, fontSize = 10.sp, fontWeight = FontWeight.Bold) }; Text("  AMBIENT", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp) }
 @Composable private fun Mascot(state: CompanionState, size: Int, emoji: String? = null, artwork: CompanionArtwork? = null) {
     when {
@@ -413,18 +426,22 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
 }
 @Composable private fun EmojiPicker(selected: String, select: (String) -> Unit) = PremiumCard {
     Text("Choose an emoji", color = Ink, fontWeight = FontWeight.SemiBold)
+    Text("Swipe sideways to see more", color = MutedInk, fontSize = 12.sp)
     Spacer(Modifier.height(14.dp))
-    emojiChoices.chunked(6).forEach { row ->
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            row.forEach { emoji ->
-                Surface(
-                    modifier = Modifier.size(44.dp).clickable { select(emoji) },
-                    color = if (emoji == selected) Color(0xFFFFE8C4) else Color.Transparent,
-                    shape = CircleShape,
-                ) { Box(contentAlignment = Alignment.Center) { Text(emoji, fontSize = 25.sp) } }
-            }
+    androidx.compose.foundation.lazy.grid.LazyHorizontalGrid(
+        rows = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
+        modifier = Modifier.fillMaxWidth().height(144.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        items(emojiChoices.size, key = { emojiChoices[it] }) { index ->
+            val emoji = emojiChoices[index]
+            Surface(
+                modifier = Modifier.size(44.dp).clickable { select(emoji) },
+                color = if (emoji == selected) Color(0xFFFFE8C4) else Color.Transparent,
+                shape = CircleShape,
+            ) { Box(contentAlignment = Alignment.Center) { Text(emoji, fontSize = 25.sp) } }
         }
-        Spacer(Modifier.height(6.dp))
     }
 }
 @Composable private fun ArtworkPicker(selected: CompanionArtwork, select: (CompanionArtwork) -> Unit) = PremiumCard {
@@ -440,7 +457,7 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
                     border = if (artwork == selected) androidx.compose.foundation.BorderStroke(2.dp, AmberDeep) else null,
                 ) {
                     Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Image(painterResource(artwork.drawableRes()), artwork.label, Modifier.size(72.dp), contentScale = ContentScale.Fit)
+                        Image(painterResource(artwork.thumbnailRes()), artwork.label, Modifier.size(72.dp), contentScale = ContentScale.Fit)
                         Text(artwork.label, color = Ink, fontSize = 11.sp, maxLines = 1)
                     }
                 }

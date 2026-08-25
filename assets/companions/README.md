@@ -10,3 +10,5 @@ This folder keeps editable source artwork separate from Android runtime resource
 
 Runtime artwork is capped at 768 px on its longest side and encoded as lossless WebP.
 Background removal preserves real alpha transparency instead of a painted checkerboard.
+The `companion_thumb_*.webp` resources are lightweight 192 px previews used by the
+Customize screen so the full overlay artwork does not cause scrolling stalls.
