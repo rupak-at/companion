@@ -4,8 +4,24 @@ Ambient Companion is an Android app that places a small, friendly character abov
 phone UI. The companion can be dragged and tucked against a screen edge, reacts to taps,
 and adapts its mood to the environment, phone state, and rhythm of the day.
 
-V2 makes the companion feel alive without becoming distracting, invasive, or battery
-hungry. Version `0.2.0` is local-first and does not use generative AI or cloud accounts.
+V3 adds opt-in, privacy-conscious screen and activity awareness. Version `0.3.0` remains
+deterministic and local-first; it does not use generative AI, cloud screen analysis, or
+autonomous control.
+
+## V3 experience
+
+- Sanitized current-app and screen-structure awareness through an opt-in accessibility service
+- Keyboard, focused-input, dialog, cutout, and fullscreen obstruction avoidance
+- Sensitive Screen Mode with screenshot, message, logging, and action restrictions
+- User-triggered contextual article, form, chat, media, and generic actions
+- Per-app display, message, action, privacy, inspection, and wellbeing policies
+- Active-use, continuous-scroll, and daily app-open counters stored only on-device
+- Optional wellbeing reactions controlled by a deterministic Attention Engine
+- Screen Awareness, wellbeing, profiles, privacy, data-clearing, and debugger UI
+- V2-to-V3 migration that does not assume the new permission or feature toggle
+
+Automated repository checks and remaining device/release gates are tracked in
+[V3_ACCEPTANCE.md](V3_ACCEPTANCE.md).
 
 ## V2 experience
 
@@ -82,10 +98,10 @@ the operating system and is not silently bypassed or retained by the app.
 
 Assistive controls are disabled by default. Enabling them opens Android Accessibility
 Settings, where the user must explicitly activate `Ambient assistive controls`. The service
-does not retrieve window content and ignores accessibility events; it performs only the
-global action the user selects. The floating companion continues to use the normal Android
-overlay permission, so enabling assistive controls does not bypass protected lock-screen or
-authentication surfaces.
+performs global actions only when the user selects them. If Screen Awareness is separately
+enabled in Ambient, the same service derives local structural metadata such as typing,
+scrolling, forms, and fullscreen state. Raw screen content is not stored. The companion does
+not bypass protected lock-screen or authentication surfaces.
 
 ## Android system UI behavior
 
@@ -100,7 +116,8 @@ notification and the optional Quick Settings tile. Lock-screen visibility still 
 the notification privacy choices configured by the device owner.
 
 See [V1_ACCEPTANCE.md](V1_ACCEPTANCE.md) for the historical V1 matrix and
-[V2_ACCEPTANCE.md](V2_ACCEPTANCE.md) for current release QA.
+[V2_ACCEPTANCE.md](V2_ACCEPTANCE.md) for V2 history, and [V3_ACCEPTANCE.md](V3_ACCEPTANCE.md)
+for current release QA.
 
 ## Development
 

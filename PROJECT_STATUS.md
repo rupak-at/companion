@@ -4,13 +4,25 @@ Last reviewed: 2026-08-25
 
 ## Current status
 
-The repository-implementable V2 feature set is complete. Ambient Companion is version
-`0.2.0` and combines weather/time context with battery, charging, power saver, network,
-audio output, schedules, personality, themes, message packs, and local interaction memory.
+The repository-implementable V3 feature set is complete. Ambient Companion is version
+`0.3.0` and adds opt-in screen structure, smart positioning, per-app behavior, privacy mode,
+user-triggered screen actions, local wellbeing counters, and attention control to V2.
 
 Automated unit tests, Android lint, and debug APK assembly pass. V2 cannot be called a
 production release until the physical-device, battery, soak, and signed-release gates in
-`V2_ACCEPTANCE.md` are completed.
+`V3_ACCEPTANCE.md` are completed.
+
+## V3 implementation completed
+
+- [x] Added sanitized, ephemeral accessibility-tree processing and current-app awareness.
+- [x] Added deterministic screen classification with confidence and generic fallback.
+- [x] Added keyboard, focused-input, dialog, system-edge, cutout, and fullscreen avoidance.
+- [x] Added Sensitive Screen Mode and screenshot/message/action restrictions.
+- [x] Added user-triggered context actions and per-app/category behavior profiles.
+- [x] Added active-session, scroll, app-open, daily reset, exclusion, and clear-data behavior.
+- [x] Added wellbeing reaction styles, fatigue animation, and the Attention Engine.
+- [x] Added V3 onboarding copy, settings, privacy dashboard, profiles, and debugger.
+- [x] Added V2-to-V3 migration with Screen Awareness opt-in.
 
 ## V2 implementation completed
 
@@ -60,13 +72,20 @@ production release until the physical-device, battery, soak, and signed-release 
 - [x] Added resource-aware weather work intervals and cancellation when weather is off.
 - [x] Added the requested launcher artwork and retained its source image in Git.
 
-## Automated verification
+## V2 automated verification
 
 - [x] Unit tests cover context selection, migration, schedules, battery hysteresis,
   animation priority, queue behavior, message behavior, rule conflicts, and gestures.
 - [x] `./gradlew testDebugUnitTest`
 - [x] `./gradlew lintDebug`
 - [x] `./gradlew assembleDebug`
+
+## V3 automated verification
+
+- [x] Screen classification, sensitivity, safe actions, and obstruction resolution tests.
+- [x] Session, idle, scroll, app-open, daily-reset, reaction-style, and attention tests.
+- [x] V3 settings migration and category-default tests.
+- [x] `./gradlew testDebugUnitTest lintDebug assembleDebug` passed on 2026-08-25.
 
 ## Physical release validation still required
 
@@ -80,4 +99,4 @@ production release until the physical-device, battery, soak, and signed-release 
 - [ ] Multi-day crash-free daily-use soak.
 - [ ] Release signing and signed APK/AAB production validation.
 
-See `V2_ACCEPTANCE.md` for the device test matrix and evidence fields.
+See `V3_ACCEPTANCE.md` for the current V3 device test matrix and evidence fields.
