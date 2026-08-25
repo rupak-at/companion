@@ -565,28 +565,53 @@ class CompanionOverlayService : AccessibilityService() {
     }
 
     private fun showMessage(message: String) {
-        bubbleView?.let(windowManager::removeView)
+        bubbleView?.let { runCatching { windowManager.removeView(it) } }
         val companionParams = layoutParams ?: return
         val screen = screenSize()
+        val margin = dp(16)
+        val gap = dp(10)
+        val width = minOf(dp(248), (screen.x - margin * 2).coerceAtLeast(dp(160)))
         val bubble = TextView(this).apply {
             text = message
-            textSize = 14f
-            setTextColor(Color.rgb(48, 40, 50))
-            setPadding(dp(16), dp(10), dp(16), dp(10))
+            textSize = 14.5f
+            setTextColor(Color.rgb(255, 247, 239))
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            setLineSpacing(dp(3).toFloat(), 1f)
+            setPadding(dp(20), dp(15), dp(20), dp(16))
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.argb(242, 255, 252, 248))
-                cornerRadius = dp(18).toFloat()
-                setStroke(dp(1), Color.argb(24, 48, 40, 50))
+                setColor(Color.argb(250, 35, 27, 39))
+                cornerRadius = dp(22).toFloat()
+                setStroke(dp(1), Color.argb(150, 102, 76, 91))
             }
+            elevation = dp(12).toFloat()
             alpha = 0f
-            scaleX = 0.9f
-            scaleY = 0.9f
+            scaleX = 0.94f
+            scaleY = 0.94f
         }
-        val width = dp(190)
+        bubble.measure(
+            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
+        val bubbleHeight = bubble.measuredHeight
+        val iconCenterX = companionParams.x + companionParams.width / 2
+        val placeToRight = iconCenterX < screen.x / 2
+        val placeAbove = companionParams.y >= bubbleHeight + gap + margin
+        val targetX = if (placeToRight) {
+            companionParams.x + companionParams.width - dp(14)
+        } else {
+            companionParams.x - width + dp(14)
+        }
+        val targetY = if (placeAbove) {
+            companionParams.y - bubbleHeight - gap
+        } else {
+            companionParams.y + companionParams.height + gap
+        }
+        bubble.pivotX = if (placeToRight) 0f else width.toFloat()
+        bubble.pivotY = if (placeAbove) bubbleHeight.toFloat() else 0f
         val params = overlayParams(width, WindowManager.LayoutParams.WRAP_CONTENT).apply {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-            x = (companionParams.x - width / 2 + dp(42)).coerceIn(0, (screen.x - width).coerceAtLeast(0))
-            y = (companionParams.y - dp(58)).coerceAtLeast(0)
+            x = targetX.coerceIn(margin, (screen.x - width - margin).coerceAtLeast(margin))
+            y = targetY.coerceIn(margin, (screen.y - bubbleHeight - margin).coerceAtLeast(margin))
         }
         windowManager.addView(bubble, params)
         bubbleView = bubble
