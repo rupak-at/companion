@@ -21,6 +21,8 @@ import com.ambientcompanion.quicksettings.CompanionTileService
 import com.ambientcompanion.ui.AmbientApp
 import com.ambientcompanion.ui.AppScreen
 import kotlinx.coroutines.launch
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
     private val app get() = application as AmbientApplication
@@ -29,11 +31,16 @@ class MainActivity : ComponentActivity() {
     private var snapshotState = androidx.compose.runtime.mutableStateOf<ContextSnapshot?>(null)
     private var screenState = androidx.compose.runtime.mutableStateOf(AppScreen.HOME)
     private var accessibilityEnabledState = androidx.compose.runtime.mutableStateOf(false)
+    private var pendingBluetoothSettings: UserSettings? = null
 
     private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         refreshContext(true)
     }
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    private val bluetoothPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        pendingBluetoothSettings?.let { pending -> persistSettings(pending.copy(headphoneReactions = granted)) }
+        pendingBluetoothSettings = null
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,8 +128,21 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateSettings(transform: (UserSettings) -> UserSettings) {
+        val current = settingsState.value
+        val next = transform(current)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !current.headphoneReactions && next.headphoneReactions &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingBluetoothSettings = next
+            bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            return
+        }
+        persistSettings(next)
+    }
+
+    private fun persistSettings(next: UserSettings) {
         lifecycleScope.launch {
-            app.preferences.updateSettings(transform)
+            app.preferences.updateSettings { next }
             sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
         }
     }
