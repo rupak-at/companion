@@ -93,7 +93,11 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     override fun performClick(): Boolean {
         super.performClick()
         wake()
-        if (appearance == CompanionAppearance.EMOJI) return true
+        return true
+    }
+
+    private fun playHappyReaction() {
+        if (appearance == CompanionAppearance.EMOJI) return
         animate().cancel()
         scaleX = 0.9f
         scaleY = 0.9f
@@ -105,7 +109,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             .setInterpolator(OvershootInterpolator())
             .withEndAction { animate().rotation(0f).setDuration(160).start() }
             .start()
-        return true
     }
 
     fun playSurprisedReaction() {
@@ -181,7 +184,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
 
     override fun play(animation: AnimationId) {
         when (animation) {
-            AnimationId.TAP_HAPPY -> performClick()
+            AnimationId.TAP_HAPPY -> playHappyReaction()
             AnimationId.DOUBLE_TAP_SURPRISED -> playSurprisedReaction()
             AnimationId.DRAG -> setDragging(true)
             AnimationId.EDGE_LAND -> setDragging(false)

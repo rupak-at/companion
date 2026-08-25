@@ -46,6 +46,11 @@ import com.ambientcompanion.domain.rule.EventQueue
 import com.ambientcompanion.domain.schedule.SchedulePolicy
 import com.ambientcompanion.domain.schedule.OutsideHoursBehavior
 import com.ambientcompanion.renderer.AnimationId
+import com.ambientcompanion.renderer.CompanionRenderer
+import com.ambientcompanion.renderer.AnimatedAssetRenderer
+import com.ambientcompanion.renderer.EmojiRenderer
+import com.ambientcompanion.animation.AnimationStateMachine
+import com.ambientcompanion.animation.AnimationPhase
 import com.ambientcompanion.domain.model.CompanionState
 import com.ambientcompanion.screenshot.ScreenshotPermissionActivity
 import kotlin.math.abs
@@ -65,6 +70,8 @@ class CompanionOverlayService : AccessibilityService() {
     private var bubbleView: View? = null
     private var quickMenuView: View? = null
     private var layoutParams: WindowManager.LayoutParams? = null
+    private var renderer: CompanionRenderer? = null
+    private val animationStateMachine = AnimationStateMachine()
     private val handler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val app by lazy { application as AmbientApplication }
@@ -87,8 +94,8 @@ class CompanionOverlayService : AccessibilityService() {
     private val systemReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                Intent.ACTION_SCREEN_OFF -> companionView?.pauseAnimation()
-                Intent.ACTION_SCREEN_ON -> { companionView?.startIdleAnimation(settings.reducedMotion); refreshContext() }
+                Intent.ACTION_SCREEN_OFF -> { animationStateMachine.pause(); renderer?.pause() }
+                Intent.ACTION_SCREEN_ON -> { animationStateMachine.resume(); renderer?.resume(); refreshContext() }
                 Intent.ACTION_CONFIGURATION_CHANGED -> { clampToScreen(); refreshContext() }
                 Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED -> refreshContext()
                 ACTION_CONTEXT_UPDATED -> refreshContext(true)
@@ -138,6 +145,7 @@ class CompanionOverlayService : AccessibilityService() {
         bubbleView?.let { runCatching { windowManager.removeView(it) } }
         quickMenuView?.let { runCatching { windowManager.removeView(it) } }
         companionView = null; bubbleView = null; quickMenuView = null; isRunning = false
+        renderer = null
         if (updatePreference) serviceScope.launch { app.preferences.updateSettings { it.copy(companionEnabled = false) } }
     }
 
@@ -176,6 +184,7 @@ class CompanionOverlayService : AccessibilityService() {
         }
 
         companionView = CompanionView(this).also { view ->
+            renderer = AnimatedAssetRenderer(view)
             installDragHandling(view)
             windowManager.addView(view, layoutParams)
             view.startIdleAnimation()
@@ -202,12 +211,14 @@ class CompanionOverlayService : AccessibilityService() {
             settings = app.preferences.currentSettings()
             resizeCompanion(settings.companionSizeDp)
             val device = app.deviceContextSource.state.value
+            val effectiveAppearance = if (settings.resourceMode == ResourceMode.MINIMAL) com.ambientcompanion.data.preferences.CompanionAppearance.EMOJI else settings.companionAppearance
             companionView?.configureAppearance(
-                if (settings.resourceMode == ResourceMode.MINIMAL) com.ambientcompanion.data.preferences.CompanionAppearance.EMOJI else settings.companionAppearance,
+                effectiveAppearance,
                 settings.selectedEmoji,
                 settings.idleOpacity,
                 settings.reducedMotion || device.isPowerSaveMode || settings.resourceMode != ResourceMode.NORMAL,
             )
+            companionView?.let { renderer = if (effectiveAppearance == com.ambientcompanion.data.preferences.CompanionAppearance.EMOJI) EmojiRenderer(it) else AnimatedAssetRenderer(it) }
             companionView?.setTheme(settings.theme)
             val snapshot = app.contextRepository.refresh(force)
             if (android.os.SystemClock.uptimeMillis() >= previewUntil) applyAmbientContext(snapshot.context)
@@ -261,12 +272,12 @@ class CompanionOverlayService : AccessibilityService() {
         winningRuleId = resolved.winningRuleId
         activeRuleIds = resolved.activeRuleIds
         currentState = resolved.behavior.visualState
-        companionView?.apply {
-            applyState(currentState, settings.reducedMotion || device.isPowerSaveMode)
-            setAccessory(resolved.behavior.accessory)
-            currentAccessory = resolved.behavior.accessory
-            if (outsideActive && settings.outsideHoursBehavior == OutsideHoursBehavior.PEEK_FROM_EDGE) alpha = .48f
-        }
+        animationStateMachine.request(AnimationId.STATE_TRANSITION, AnimationPhase.TRANSITION)
+        renderer?.setState(currentState)
+        renderer?.setAccessory(resolved.behavior.accessory)
+        animationStateMachine.finish()
+        currentAccessory = resolved.behavior.accessory
+        if (outsideActive && settings.outsideHoursBehavior == OutsideHoursBehavior.PEEK_FROM_EDGE) companionView?.alpha = .48f
         val event = if (eventInFlight) null else eventQueue.poll()
         if (event != null && !quiet) playEvent(event)
         else if (resolved.behavior.automaticMessageAllowed) maybeShowAutomaticMessage(currentState)
@@ -299,13 +310,22 @@ class CompanionOverlayService : AccessibilityService() {
         }
         eventInFlight = true
         currentAnimation = animation
-        companionView?.play(animation)
+        playAnimation(animation, AnimationPhase.AUTOMATIC)
         if (settings.messagesEnabled) showMessage(message)
         handler.postDelayed({
             eventInFlight = false
             currentAnimation = AnimationId.IDLE
+            animationStateMachine.finish()
             refreshContext()
         }, EVENT_DURATION_MS)
+    }
+
+    private fun playAnimation(animation: AnimationId, phase: AnimationPhase) {
+        val snapshot = animationStateMachine.request(animation, phase)
+        if (snapshot.animation == animation) {
+            currentAnimation = animation
+            renderer?.play(animation)
+        }
     }
 
     private fun millisUntil(minutes: Int): Long {
@@ -373,6 +393,7 @@ class CompanionOverlayService : AccessibilityService() {
             when (tapCount) {
                 1 -> {
                     view.performClick()
+                    playAnimation(AnimationId.TAP_HAPPY, AnimationPhase.INTERACTION)
                     if (settings.messagesEnabled) serviceScope.launch {
                         val (lastId) = app.preferences.lastMessage()
                         val tap = app.preferences.recordTap()
@@ -382,11 +403,15 @@ class CompanionOverlayService : AccessibilityService() {
                     }
                 }
                 2 -> {
-                    (view as CompanionView).playSurprisedReaction()
+                    playAnimation(AnimationId.DOUBLE_TAP_SURPRISED, AnimationPhase.INTERACTION)
                     showMessage(playfulMessages.random())
                 }
                 3 -> requestScreenshot()
             }
+            if (tapCount in 1..2) handler.postDelayed({
+                animationStateMachine.finish()
+                currentAnimation = AnimationId.IDLE
+            }, 700L)
             tapCount = 0
         }
         tapAction = Runnable(::runTapAction)
@@ -416,27 +441,28 @@ class CompanionOverlayService : AccessibilityService() {
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val screen = screenSize()
-                    dragged = dragged || abs(event.rawX - touchX) > view.touchSlop() ||
-                        abs(event.rawY - touchY) > view.touchSlop()
+                    val becameDragged = !dragged && (abs(event.rawX - touchX) > view.touchSlop() ||
+                        abs(event.rawY - touchY) > view.touchSlop())
+                    dragged = dragged || becameDragged
                     params.x = (initialX + event.rawX - touchX).roundToInt()
                         .coerceIn(0, (screen.x - view.width).coerceAtLeast(0))
                     params.y = (initialY + event.rawY - touchY).roundToInt()
                         .coerceIn(0, (screen.y - view.height).coerceAtLeast(0))
                     windowManager.updateViewLayout(view, params)
-                    if (dragged) (view as CompanionView).setDragging(true)
+                    if (becameDragged) playAnimation(AnimationId.DRAG, AnimationPhase.DRAGGING)
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    (view as CompanionView).setDragging(false)
+                    if (dragged) { renderer?.play(AnimationId.EDGE_LAND); animationStateMachine.finish() }
                     if (!dragged && !longPressed && event.actionMasked == MotionEvent.ACTION_UP) {
                         tapCount++
                         handler.removeCallbacks(tapAction)
                         if (tapCount >= 3) runTapAction() else handler.postDelayed(tapAction, TAP_WINDOW_MS)
                     }
                     if (dragged) {
-                        if (settings.edgeSnapEnabled) snapToNearestEdge(view) else savePosition(view)
+                        if (settings.edgeSnapEnabled) snapToNearestEdge(view) else savePosition(view as CompanionView)
                     } else {
-                        view.startIdleAnimation()
+                        (view as CompanionView).startIdleAnimation()
                     }
                     true
                 }
