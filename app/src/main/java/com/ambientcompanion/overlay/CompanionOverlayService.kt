@@ -885,7 +885,6 @@ class CompanionOverlayService : AccessibilityService() {
         val screen = screenSize()
         val margin = dp(16)
         val gap = dp(10)
-        val width = minOf(dp(248), (screen.x - margin * 2).coerceAtLeast(dp(160)))
         val bubble = TextView(this).apply {
             text = message
             textSize = 14.5f
@@ -893,6 +892,8 @@ class CompanionOverlayService : AccessibilityService() {
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             setLineSpacing(dp(3).toFloat(), 1f)
             setPadding(dp(20), dp(15), dp(20), dp(16))
+            maxLines = 4
+            ellipsize = android.text.TextUtils.TruncateAt.END
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(Color.argb(250, 35, 27, 39))
                 cornerRadius = dp(22).toFloat()
@@ -903,6 +904,10 @@ class CompanionOverlayService : AccessibilityService() {
             scaleX = 0.94f
             scaleY = 0.94f
         }
+        val maxWidth = minOf(dp(280), (screen.x - margin * 2).coerceAtLeast(dp(96)))
+        val minWidth = minOf(dp(96), maxWidth)
+        val desiredWidth = bubble.paint.measureText(message).roundToInt() + bubble.paddingLeft + bubble.paddingRight
+        val width = desiredWidth.coerceIn(minWidth, maxWidth)
         bubble.measure(
             View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
