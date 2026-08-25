@@ -2,104 +2,82 @@
 
 Last reviewed: 2026-08-25
 
-This document summarizes what has been completed in the project so far and what still
-needs to be done before the Android V1 release. The detailed product requirements remain
-in the local `ambient_companion_v1.md` brief, while testable release criteria live in
-`V1_ACCEPTANCE.md`.
-
 ## Current status
 
-The planned V1 feature set is implemented in the repository. Automated code-level checks
-and the acceptance suite cover the core context logic and Android build. The main work
-remaining is hands-on testing across real Android devices, battery validation, and final
-release preparation.
+The repository-implementable V2 feature set is complete. Ambient Companion is version
+`0.2.0` and combines weather/time context with battery, charging, power saver, network,
+audio output, schedules, personality, themes, message packs, and local interaction memory.
 
-## Work completed so far
+Automated unit tests, Android lint, and debug APK assembly pass. V2 cannot be called a
+production release until the physical-device, battery, soak, and signed-release gates in
+`V2_ACCEPTANCE.md` are completed.
 
-### Project foundation
+## V2 implementation completed
 
-- [x] Created the native Android project in Kotlin.
-- [x] Set Android 9 (API 28) as the minimum supported version.
-- [x] Added Jetpack Compose for the application interface.
-- [x] Added DataStore, WorkManager, location, networking, and serialization dependencies.
-- [x] Kept context and state-selection logic separate from Android UI code.
-- [x] Added unit tests for time, weather, temperature, priority, fallback, and message rules.
+### Companion and animation
 
-### Floating companion
+- [x] Added the premium soft-3D mascot and retained emoji fallback mode.
+- [x] Added `AnimatedAssetRenderer` and `EmojiRenderer` behind `CompanionRenderer`.
+- [x] Added reusable idle, blink, look, tap, surprise, drag, landing, sleep, wake,
+  charging, battery, audio, network, weather, weekend, message, and transition behaviors.
+- [x] Routed live gestures and events through a priority-aware animation state machine.
+- [x] Added reduced-motion, screen-off suspension, and Normal/Battery Saver/Minimal modes.
 
-- [x] Added the foreground overlay service and persistent notification.
-- [x] Added overlay permission onboarding and enable/disable controls.
-- [x] Added dragging within safe screen bounds and optional edge snapping.
-- [x] Saved normalized companion position and corrected it after screen rotation.
-- [x] Added live position reset and restoration after reopening the app.
-- [x] Added tap, double-tap, long-press, drag, idle, and state-transition reactions.
-- [x] Added small contextual message bubbles with throttling and repeat prevention.
-- [x] Added reduced-motion behavior and screen-off animation suspension.
-- [x] Added adjustable companion size and inactive opacity.
-- [x] Added a static emoji appearance and curated emoji picker.
+### Context and rules
 
-### Context and weather
+- [x] Added callback-driven battery, charging, power-saver, network/Wi-Fi, audio-output,
+  and day/week sources without inspecting audio, media, notifications, or screen content.
+- [x] Added low-battery hysteresis, charging-cycle transitions, full-charge reactions,
+  four-second network debounce, and per-event cooldowns.
+- [x] Added a deterministic rule engine for environment, battery, charging, schedules,
+  weekend context, and temporary events.
+- [x] Added a priority queue capped at three events with deduplication, expiry, critical
+  preemption, and persistent-state restoration.
+- [x] Added boundary-driven time, sunrise, sunset, quiet-hours, and active-hours refresh.
 
-- [x] Added morning, day, evening, and night classification.
-- [x] Added sunrise and sunset boundary handling.
-- [x] Added clear, cloudy, rain, storm, fog, snow, hot, and cold states.
-- [x] Added approximate-location weather retrieval through Open-Meteo.
-- [x] Added manual Kathmandu and time-only fallbacks.
-- [x] Added local weather caching and graceful offline behavior.
-- [x] Added hourly refresh logic and low-frequency WorkManager refresh.
-- [x] Added refresh broadcasts so the active companion updates without restarting.
+### Schedules, personality, and customization
 
-### App experience and controls
+- [x] Added configurable cross-midnight quiet hours and active hours.
+- [x] Added sleep-in-place, edge-peek, and hide-completely outside-hours behavior.
+- [x] Added configurable weekend days.
+- [x] Added Cheerful, Calm, Playful, and Quiet personalities.
+- [x] Added Default, Minimal, Motivational, Cute, and Funny local message packs.
+- [x] Added daily tap memory, long-gap/rapid-tap reactions, non-repetition, copy length
+  limits, and personality-aware automatic-message frequency.
+- [x] Added Default, Night Glow, Warm Sunset, Cloud, and Mono themes plus contextual
+  scarf, umbrella, sleep-cap, headphones, and charging-spark accessories.
 
-- [x] Added a five-step onboarding flow with permission explanations.
-- [x] Added home, settings, state preview, and hidden developer override screens.
-- [x] Added manual refresh and companion position reset controls.
-- [x] Added settings for messages, automatic messages, weather, size, and motion.
-- [x] Added a Quick Settings tile for showing and hiding the companion.
-- [x] Added triple-tap screenshot capture using Android's MediaProjection consent flow.
-- [x] Added optional assistive Back, Home, Recents, notifications, Quick Settings, lock,
-  and power-dialog actions without reading window content.
-- [x] Documented Android security boundaries for protected system surfaces.
+### Controls, migration, and reliability
 
-### Verification and documentation
+- [x] Added configurable quick actions capped at four.
+- [x] Added long-press quiet mode and temporary hide for 15 minutes, one hour, until
+  evening, or until tomorrow.
+- [x] Added an interactive V2 context/rule preview and live hidden rule debugger.
+- [x] Added a V1-to-V2 preference migration and one-time “What’s new in V2” flow.
+- [x] Added opt-in boot restoration and preserved position/process/rotation behavior.
+- [x] Added optional Android 12+ Bluetooth permission gating; denial disables only
+  Bluetooth headphone awareness.
+- [x] Added resource-aware weather work intervals and cancellation when weather is off.
+- [x] Added the requested launcher artwork and retained its source image in Git.
 
-- [x] Added automated unit, lint, and debug-build verification commands.
-- [x] Added the V1 acceptance matrix in `V1_ACCEPTANCE.md`.
-- [x] Documented setup, architecture, privacy, and implemented features in `README.md`.
-- [x] Generated a debug APK through the documented build process.
+## Automated verification
 
-## Work still required
+- [x] Unit tests cover context selection, migration, schedules, battery hysteresis,
+  animation priority, queue behavior, message behavior, rule conflicts, and gestures.
+- [x] `./gradlew testDebugUnitTest`
+- [x] `./gradlew lintDebug`
+- [x] `./gradlew assembleDebug`
 
-### Physical-device release QA
+## Physical release validation still required
 
-- [ ] Test on at least one Android 9 device and one current Android device.
-- [ ] Test granting, denying, and revoking overlay and approximate-location permissions.
-- [ ] Test dragging near cutouts, rounded corners, status bars, and navigation areas.
-- [ ] Test rotation, process death, reopening, and saved-position restoration.
-- [ ] Check that tap, double-tap, drag, triple-tap, and long-press gestures do not conflict.
-- [ ] Check message readability over bright and dark wallpapers.
-- [ ] Verify screen lock/unlock behavior and animation pause/resume.
-- [ ] Verify cached-weather and time-only fallbacks with networking disabled.
-- [ ] Test foreground-service behavior on a restrictive OEM Android build.
-- [ ] Observe a full time/weather transition cycle.
-- [ ] Measure idle battery use over 24 hours.
-- [ ] Verify every size and emoji option on target OEM fonts and displays.
-- [ ] Test the public notification and Quick Settings tile on both target Android versions.
-- [ ] Test screenshot approval, denial, file output, and protected-content handling.
-- [ ] Enable, disable, and exercise every optional assistive action.
-- [ ] Complete a crash-free daily-use soak test.
+- [ ] Android 9/API 28 and current Android device tests.
+- [ ] Restrictive OEM overlay/background behavior test.
+- [ ] Bright, dark, and busy wallpaper legibility checks.
+- [ ] Wired, USB, and Bluetooth output tests on supported hardware.
+- [ ] Charging-cycle, hysteresis, full-charge, and network-flapping tests.
+- [ ] Rotation, process death, lock/unlock, reboot, and permission-revocation tests.
+- [ ] 24-hour battery measurements for all resource modes.
+- [ ] Multi-day crash-free daily-use soak.
+- [ ] Release signing and signed APK/AAB production validation.
 
-### Final release preparation
-
-- [ ] Fix any defects discovered during device QA and rerun the relevant checks.
-- [ ] Run the full verification suite: `./gradlew test lint assembleDebug`.
-- [ ] Review privacy-facing text and permission explanations on-device.
-- [ ] Prepare release signing and produce a release build when distribution is approved.
-- [ ] Capture final screenshots and write store/distribution copy if a public release is planned.
-
-## Recommended next step
-
-Begin the physical-device checklist in `V1_ACCEPTANCE.md`, recording the device model,
-Android version, result, and any issue found for each test. Start with overlay permission,
-dragging, gesture conflicts, rotation, and process restoration because those validate the
-core floating interaction before the longer battery and soak tests.
+See `V2_ACCEPTANCE.md` for the device test matrix and evidence fields.

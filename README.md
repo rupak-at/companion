@@ -2,10 +2,27 @@
 
 Ambient Companion is an Android app that places a small, friendly character above the
 phone UI. The companion can be dragged and tucked against a screen edge, reacts to taps,
-and eventually adapts its mood to the time, weather, temperature, and daylight.
+and adapts its mood to the environment, phone state, and rhythm of the day.
 
-The V1 principle is simple: make the phone feel a little more alive without becoming
-distracting, invasive, or battery hungry.
+V2 makes the companion feel alive without becoming distracting, invasive, or battery
+hungry. Version `0.2.0` is local-first and does not use generative AI or cloud accounts.
+
+## V2 experience
+
+- Premium soft-3D animated mascot with an emoji/Minimal fallback
+- Battery, charging, full-charge, power-saver, connectivity, and audio-output awareness
+- Deterministic context rules with bounded temporary reactions and cooldowns
+- Configurable quiet hours, active hours, sleep behavior, and weekend days
+- Cheerful, Calm, Playful, and Quiet personalities with five local message packs
+- Five themes, contextual accessories, local interaction memory, and reduced motion
+- Configurable quick actions and four temporary-hide durations
+- Interactive context/rule preview and live hidden rule debugger
+- Resource-aware, callback-driven operation with boundary-scheduled time refresh
+- V1 settings migration and one-time V2 introduction
+
+Repository implementation and automated verification are complete. Physical-device,
+battery, soak, and signed-release validation remain; see
+[V2_ACCEPTANCE.md](V2_ACCEPTANCE.md).
 
 ## V1 experience
 
@@ -25,14 +42,14 @@ intentionally outside V1.
 
 - Kotlin
 - Jetpack Compose for the application UI
-- `WindowManager` and `TYPE_APPLICATION_OVERLAY` for the companion
+- `WindowManager` and a user-enabled accessibility overlay for the companion
 - DataStore for settings and cached state
 - WorkManager for infrequent background refreshes
 - Fused Location Provider with approximate location by default
 - Retrofit, OkHttp, and Kotlin Serialization for Open-Meteo data
 
-The code is organized around a UI-independent context engine so time and weather rules
-can be tested without Android framework dependencies.
+The code is organized around UI-independent context, schedule, message, gesture,
+animation, and rule engines so product behavior can be unit-tested without Android UI.
 
 ## V1 implementation status
 
@@ -82,9 +99,8 @@ In protected areas, Ambient remains accessible through its public foreground-ser
 notification and the optional Quick Settings tile. Lock-screen visibility still follows
 the notification privacy choices configured by the device owner.
 
-See [V1_ACCEPTANCE.md](V1_ACCEPTANCE.md) for the verification matrix. The code-level
-acceptance suite passes; physical-device and battery checks remain release QA because no
-device or emulator is bundled with the repository.
+See [V1_ACCEPTANCE.md](V1_ACCEPTANCE.md) for the historical V1 matrix and
+[V2_ACCEPTANCE.md](V2_ACCEPTANCE.md) for current release QA.
 
 ## Development
 
