@@ -8,12 +8,14 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.ambientcompanion.domain.model.WeatherCondition
 import com.ambientcompanion.domain.context.Personality
 import com.ambientcompanion.domain.context.ResourceMode
 import com.ambientcompanion.domain.schedule.OutsideHoursBehavior
 import com.ambientcompanion.domain.behavior.QuickAction
+import com.ambientcompanion.domain.wellbeing.WellbeingReactionStyle
 import java.time.DayOfWeek
 import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
@@ -72,6 +74,22 @@ data class UserSettings(
     val outsideHoursBehavior: OutsideHoursBehavior = OutsideHoursBehavior.SLEEP_IN_PLACE,
     val hiddenUntil: Long = 0L,
     val startAfterReboot: Boolean = false,
+    val screenAwarenessEnabled: Boolean = false,
+    val smartRepositioningEnabled: Boolean = true,
+    val contextActionsEnabled: Boolean = true,
+    val sensitiveScreenModeEnabled: Boolean = true,
+    val wellbeingTrackingEnabled: Boolean = true,
+    val longScrollRemindersEnabled: Boolean = true,
+    val appOpenReactionsEnabled: Boolean = true,
+    val firstScrollReminderMinutes: Int = 30,
+    val strongScrollReminderMinutes: Int = 60,
+    val wellbeingReactionStyle: WellbeingReactionStyle = WellbeingReactionStyle.PLAYFUL,
+    val dailyTotalsEnabled: Boolean = false,
+    val notificationAwarenessEnabled: Boolean = false,
+    val breakSuggestionsEnabled: Boolean = true,
+    val defaultBreakMinutes: Int = 2,
+    val excludedScreenApps: Set<String> = emptySet(),
+    val excludedWellbeingApps: Set<String> = emptySet(),
     val quickActions: List<QuickAction> = listOf(
         QuickAction.HOME, QuickAction.NOTIFICATIONS, QuickAction.SCREENSHOT, QuickAction.REFRESH,
     ),
@@ -130,6 +148,22 @@ class AppPreferences(private val context: Context) {
             outsideHoursBehavior = values[OUTSIDE_HOURS_BEHAVIOR].enumOr(OutsideHoursBehavior.SLEEP_IN_PLACE),
             hiddenUntil = values[HIDDEN_UNTIL] ?: 0L,
             startAfterReboot = values[START_AFTER_REBOOT] ?: false,
+            screenAwarenessEnabled = values[SCREEN_AWARENESS] ?: false,
+            smartRepositioningEnabled = values[SMART_REPOSITIONING] ?: true,
+            contextActionsEnabled = values[CONTEXT_ACTIONS] ?: true,
+            sensitiveScreenModeEnabled = values[SENSITIVE_SCREEN_MODE] ?: true,
+            wellbeingTrackingEnabled = values[WELLBEING_TRACKING] ?: true,
+            longScrollRemindersEnabled = values[LONG_SCROLL_REMINDERS] ?: true,
+            appOpenReactionsEnabled = values[APP_OPEN_REACTIONS] ?: true,
+            firstScrollReminderMinutes = (values[FIRST_SCROLL_REMINDER] ?: 30).coerceIn(5, 120),
+            strongScrollReminderMinutes = (values[STRONG_SCROLL_REMINDER] ?: 60).coerceIn(10, 180),
+            wellbeingReactionStyle = values[WELLBEING_REACTION_STYLE].enumOr(WellbeingReactionStyle.PLAYFUL),
+            dailyTotalsEnabled = values[DAILY_TOTALS] ?: false,
+            notificationAwarenessEnabled = values[NOTIFICATION_AWARENESS] ?: false,
+            breakSuggestionsEnabled = values[BREAK_SUGGESTIONS] ?: true,
+            defaultBreakMinutes = (values[DEFAULT_BREAK_MINUTES] ?: 2).coerceIn(1, 15),
+            excludedScreenApps = values[EXCLUDED_SCREEN_APPS] ?: emptySet(),
+            excludedWellbeingApps = values[EXCLUDED_WELLBEING_APPS] ?: emptySet(),
             quickActions = (values[QUICK_ACTIONS] ?: "HOME,NOTIFICATIONS,SCREENSHOT,REFRESH")
                 .split(',').mapNotNull { runCatching { QuickAction.valueOf(it) }.getOrNull() }.distinct().take(4),
             manualLatitude = values[MANUAL_LATITUDE],
@@ -175,6 +209,22 @@ class AppPreferences(private val context: Context) {
                 it[OUTSIDE_HOURS_BEHAVIOR] = next.outsideHoursBehavior.name
                 it[HIDDEN_UNTIL] = next.hiddenUntil
                 it[START_AFTER_REBOOT] = next.startAfterReboot
+                it[SCREEN_AWARENESS] = next.screenAwarenessEnabled
+                it[SMART_REPOSITIONING] = next.smartRepositioningEnabled
+                it[CONTEXT_ACTIONS] = next.contextActionsEnabled
+                it[SENSITIVE_SCREEN_MODE] = next.sensitiveScreenModeEnabled
+                it[WELLBEING_TRACKING] = next.wellbeingTrackingEnabled
+                it[LONG_SCROLL_REMINDERS] = next.longScrollRemindersEnabled
+                it[APP_OPEN_REACTIONS] = next.appOpenReactionsEnabled
+                it[FIRST_SCROLL_REMINDER] = next.firstScrollReminderMinutes.coerceIn(5, 120)
+                it[STRONG_SCROLL_REMINDER] = next.strongScrollReminderMinutes.coerceIn(10, 180)
+                it[WELLBEING_REACTION_STYLE] = next.wellbeingReactionStyle.name
+                it[DAILY_TOTALS] = next.dailyTotalsEnabled
+                it[NOTIFICATION_AWARENESS] = next.notificationAwarenessEnabled
+                it[BREAK_SUGGESTIONS] = next.breakSuggestionsEnabled
+                it[DEFAULT_BREAK_MINUTES] = next.defaultBreakMinutes.coerceIn(1, 15)
+                it[EXCLUDED_SCREEN_APPS] = next.excludedScreenApps
+                it[EXCLUDED_WELLBEING_APPS] = next.excludedWellbeingApps
                 it[QUICK_ACTIONS] = next.quickActions.distinct().take(4).joinToString(",") { action -> action.name }
                 next.manualLatitude?.let { value -> it[MANUAL_LATITUDE] = value } ?: it.remove(MANUAL_LATITUDE)
                 next.manualLongitude?.let { value -> it[MANUAL_LONGITUDE] = value } ?: it.remove(MANUAL_LONGITUDE)
@@ -264,6 +314,22 @@ class AppPreferences(private val context: Context) {
         private val OUTSIDE_HOURS_BEHAVIOR = stringPreferencesKey("outside_hours_behavior")
         private val HIDDEN_UNTIL = longPreferencesKey("hidden_until")
         private val START_AFTER_REBOOT = booleanPreferencesKey("start_after_reboot")
+        private val SCREEN_AWARENESS = booleanPreferencesKey("screen_awareness_enabled")
+        private val SMART_REPOSITIONING = booleanPreferencesKey("smart_repositioning_enabled")
+        private val CONTEXT_ACTIONS = booleanPreferencesKey("context_actions_enabled")
+        private val SENSITIVE_SCREEN_MODE = booleanPreferencesKey("sensitive_screen_mode_enabled")
+        private val WELLBEING_TRACKING = booleanPreferencesKey("wellbeing_tracking_enabled")
+        private val LONG_SCROLL_REMINDERS = booleanPreferencesKey("long_scroll_reminders_enabled")
+        private val APP_OPEN_REACTIONS = booleanPreferencesKey("app_open_reactions_enabled")
+        private val FIRST_SCROLL_REMINDER = intPreferencesKey("first_scroll_reminder_minutes")
+        private val STRONG_SCROLL_REMINDER = intPreferencesKey("strong_scroll_reminder_minutes")
+        private val WELLBEING_REACTION_STYLE = stringPreferencesKey("wellbeing_reaction_style")
+        private val DAILY_TOTALS = booleanPreferencesKey("daily_totals_enabled")
+        private val NOTIFICATION_AWARENESS = booleanPreferencesKey("notification_awareness_enabled")
+        private val BREAK_SUGGESTIONS = booleanPreferencesKey("break_suggestions_enabled")
+        private val DEFAULT_BREAK_MINUTES = intPreferencesKey("default_break_minutes")
+        private val EXCLUDED_SCREEN_APPS = stringSetPreferencesKey("excluded_screen_apps")
+        private val EXCLUDED_WELLBEING_APPS = stringSetPreferencesKey("excluded_wellbeing_apps")
         private val QUICK_ACTIONS = stringPreferencesKey("quick_actions")
         private val MANUAL_LATITUDE = doublePreferencesKey("manual_latitude")
         private val MANUAL_LONGITUDE = doublePreferencesKey("manual_longitude")
