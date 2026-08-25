@@ -1,6 +1,6 @@
 package com.ambientcompanion.domain.rule
 
-enum class CompanionEventType { CHARGING_STARTED, CHARGING_STOPPED, BATTERY_FULL, HEADPHONES_CONNECTED, NETWORK_LOST, NETWORK_RESTORED }
+enum class CompanionEventType { BATTERY_LOW, BATTERY_CRITICAL, CHARGING_STARTED, CHARGING_STOPPED, BATTERY_FULL, HEADPHONES_CONNECTED, NETWORK_LOST, NETWORK_RESTORED }
 data class CompanionEvent(val type: CompanionEventType, val createdAt: Long, val priority: Int = 0, val ttlMs: Long = 30_000)
 
 class EventQueue(private val capacity: Int = 3, private val now: () -> Long = System::currentTimeMillis) {

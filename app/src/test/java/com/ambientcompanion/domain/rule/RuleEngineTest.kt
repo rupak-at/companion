@@ -27,4 +27,20 @@ class RuleEngineTest {
         now += 31_000
         assertTrue(queue.snapshot().isEmpty())
     }
+
+    @Test fun `critical event moves ahead of lower priority events`() {
+        val queue = EventQueue(3) { 1_000L }
+        queue.offer(CompanionEvent(CompanionEventType.NETWORK_RESTORED, 1_000L, 40))
+        queue.offer(CompanionEvent(CompanionEventType.BATTERY_CRITICAL, 1_000L, 100))
+        assertEquals(CompanionEventType.BATTERY_CRITICAL, queue.poll()?.type)
+    }
+
+    @Test fun `cooldown allows first event and rejects repeats until elapsed`() {
+        var now = 1_000L
+        val cooldowns = EventCooldowns { now }
+        assertTrue(cooldowns.allow(CompanionEventType.HEADPHONES_CONNECTED, 30_000L))
+        assertFalse(cooldowns.allow(CompanionEventType.HEADPHONES_CONNECTED, 30_000L))
+        now += 30_000L
+        assertTrue(cooldowns.allow(CompanionEventType.HEADPHONES_CONNECTED, 30_000L))
+    }
 }

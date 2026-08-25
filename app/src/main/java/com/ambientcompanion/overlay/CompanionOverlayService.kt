@@ -74,6 +74,12 @@ class CompanionOverlayService : AccessibilityService() {
     private val eventCooldowns = EventCooldowns()
     private val batteryStateTracker = BatteryStateTracker()
     private var lastDeviceContext: com.ambientcompanion.domain.context.DeviceContext? = null
+    private var lastBatteryState: BatteryState? = null
+    private var eventInFlight = false
+    private var winningRuleId = "environment"
+    private var activeRuleIds = emptyList<String>()
+    private var currentAnimation = AnimationId.IDLE
+    private var currentAccessory: com.ambientcompanion.renderer.AccessoryId? = null
     private var settings = UserSettings()
     private var currentState = CompanionState.DAY_CLEAR
     private var previewUntil = 0L
@@ -231,6 +237,15 @@ class CompanionOverlayService : AccessibilityService() {
             isWeekend = SchedulePolicy.isWeekend(app.deviceContextSource.state.value.dayOfWeek, settings.weekendDays),
             classifiedBatteryState = batteryStateTracker.update(rawDevice.batteryPercent, rawDevice.isBatteryFull),
         )
+        val previousBattery = lastBatteryState
+        lastBatteryState = device.batteryState
+        if (previousBattery != device.batteryState) {
+            when (device.batteryState) {
+                BatteryState.CRITICAL -> eventQueue.offer(CompanionEvent(CompanionEventType.BATTERY_CRITICAL, System.currentTimeMillis(), 100))
+                BatteryState.LOW -> eventQueue.offer(CompanionEvent(CompanionEventType.BATTERY_LOW, System.currentTimeMillis(), 95))
+                else -> Unit
+            }
+        }
         val context = AmbientContext(environment, device, CompanionPreferences(
             personality = settings.personality,
             quietHoursActive = quiet,
@@ -243,13 +258,16 @@ class CompanionOverlayService : AccessibilityService() {
             resourceMode = settings.resourceMode,
         ))
         val resolved = ruleEngine.resolve(context)
+        winningRuleId = resolved.winningRuleId
+        activeRuleIds = resolved.activeRuleIds
         currentState = resolved.behavior.visualState
         companionView?.apply {
             applyState(currentState, settings.reducedMotion || device.isPowerSaveMode)
             setAccessory(resolved.behavior.accessory)
+            currentAccessory = resolved.behavior.accessory
             if (outsideActive && settings.outsideHoursBehavior == OutsideHoursBehavior.PEEK_FROM_EDGE) alpha = .48f
         }
-        val event = eventQueue.poll()
+        val event = if (eventInFlight) null else eventQueue.poll()
         if (event != null && !quiet) playEvent(event)
         else if (resolved.behavior.automaticMessageAllowed) maybeShowAutomaticMessage(currentState)
     }
@@ -270,6 +288,8 @@ class CompanionOverlayService : AccessibilityService() {
 
     private fun playEvent(event: CompanionEvent) {
         val (animation, message) = when (event.type) {
+            CompanionEventType.BATTERY_LOW -> AnimationId.BATTERY_LOW to "Feed me 🔌"
+            CompanionEventType.BATTERY_CRITICAL -> AnimationId.BATTERY_LOW to "Need power..."
             CompanionEventType.CHARGING_STARTED -> AnimationId.CHARGING to "Charging up!"
             CompanionEventType.CHARGING_STOPPED -> AnimationId.STATE_TRANSITION to "Unplugged"
             CompanionEventType.BATTERY_FULL -> AnimationId.BATTERY_FULL to "All full!"
@@ -277,8 +297,15 @@ class CompanionOverlayService : AccessibilityService() {
             CompanionEventType.NETWORK_LOST -> AnimationId.NETWORK_LOST to "Lost connection?"
             CompanionEventType.NETWORK_RESTORED -> AnimationId.NETWORK_RESTORED to "Back online!"
         }
+        eventInFlight = true
+        currentAnimation = animation
         companionView?.play(animation)
         if (settings.messagesEnabled) showMessage(message)
+        handler.postDelayed({
+            eventInFlight = false
+            currentAnimation = AnimationId.IDLE
+            refreshContext()
+        }, EVENT_DURATION_MS)
     }
 
     private fun millisUntil(minutes: Int): Long {
@@ -638,6 +665,7 @@ class CompanionOverlayService : AccessibilityService() {
         const val ACTION_RESET_POSITION = "com.ambientcompanion.action.RESET_POSITION"
         private const val PREVIEW_DURATION_MS = 10_000L
         private const val TAP_WINDOW_MS = 360L
+        private const val EVENT_DURATION_MS = 2_500L
         private val contextMessages = listOf("You've got this ✨", "Nice to see you!", "Hope your day's going well")
         private val playfulMessages = listOf("Hey! 😳", "That tickles!", "I'm awake 👀")
 
@@ -656,8 +684,30 @@ class CompanionOverlayService : AccessibilityService() {
         }
 
         fun requestSync() { instance?.syncVisibility() }
+
+        fun debugSnapshot(): OverlayDebugSnapshot? = instance?.let { service ->
+            OverlayDebugSnapshot(
+                winningRule = service.winningRuleId,
+                activeRules = service.activeRuleIds,
+                queuedEvents = service.eventQueue.snapshot().map { it.type.name },
+                animation = service.currentAnimation.name,
+                accessory = service.currentAccessory?.name,
+                renderer = if (service.settings.resourceMode == ResourceMode.MINIMAL) "EMOJI" else service.settings.companionAppearance.name,
+                resourceMode = service.settings.resourceMode.name,
+            )
+        }
     }
 }
+
+data class OverlayDebugSnapshot(
+    val winningRule: String,
+    val activeRules: List<String>,
+    val queuedEvents: List<String>,
+    val animation: String,
+    val accessory: String?,
+    val renderer: String,
+    val resourceMode: String,
+)
 
 private fun UserSettings.messagePackId(): MessagePackId = runCatching {
     MessagePackId.valueOf(messagePack.uppercase())

@@ -38,6 +38,7 @@ import com.ambientcompanion.domain.behavior.QuickAction
 import com.ambientcompanion.domain.schedule.OutsideHoursBehavior
 import com.ambientcompanion.data.preferences.SettingsMigration
 import java.time.DayOfWeek
+import com.ambientcompanion.overlay.CompanionOverlayService
 import kotlin.math.roundToInt
 
 enum class AppScreen { HOME, CUSTOMIZE, SETTINGS, PREVIEW, DEBUG }
@@ -309,7 +310,9 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
 }
 
 @Composable private fun Debug(settings: UserSettings, snapshot: ContextSnapshot?, preview: (CompanionState) -> Unit, navigate: (AppScreen) -> Unit) = ScreenList("Rule debugger", { navigate(AppScreen.SETTINGS) }) {
-    item { PremiumCard { Text("Current AmbientContext", color = Ink, fontWeight = FontWeight.SemiBold); Text("Environment: ${snapshot?.context?.weather ?: "unknown"} · ${snapshot?.context?.timePeriod ?: "unknown"}", color = MutedInk); Text("Renderer: ${settings.companionAppearance} · Resource: ${settings.resourceMode}", color = MutedInk); Text("Personality: ${settings.personality} · Pack: ${settings.messagePack}", color = MutedInk); Text("Cooldowns and event queue are managed by the overlay", color = MutedInk, fontSize = 12.sp) } }
+    val debug = CompanionOverlayService.debugSnapshot()
+    item { PremiumCard { Text("Current AmbientContext", color = Ink, fontWeight = FontWeight.SemiBold); Text("Environment: ${snapshot?.context?.weather ?: "unknown"} · ${snapshot?.context?.timePeriod ?: "unknown"}", color = MutedInk); Text("Renderer: ${debug?.renderer ?: settings.companionAppearance} · Resource: ${debug?.resourceMode ?: settings.resourceMode}", color = MutedInk); Text("Personality: ${settings.personality} · Pack: ${settings.messagePack}", color = MutedInk) } }
+    item { PremiumCard { Text("Rule resolution", color = Ink, fontWeight = FontWeight.SemiBold); Text("Winner: ${debug?.winningRule ?: "overlay unavailable"}", color = MutedInk); Text("Active: ${debug?.activeRules?.joinToString().orEmpty().ifBlank { "none" }}", color = MutedInk); Text("Queue: ${debug?.queuedEvents?.joinToString().orEmpty().ifBlank { "empty" }}", color = MutedInk); Text("Animation: ${debug?.animation ?: "paused"} · Accessory: ${debug?.accessory ?: "none"}", color = MutedInk) } }
     item { Text("Force any state without waiting for real conditions.", color = MutedInk) }
     items(CompanionState.entries) { state -> ActionCard(state.displayName(), "Force state") { preview(state) } }
 }
