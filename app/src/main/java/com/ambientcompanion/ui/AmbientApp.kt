@@ -34,6 +34,7 @@ import com.ambientcompanion.domain.repository.ContextSnapshot
 import com.ambientcompanion.R
 import com.ambientcompanion.domain.context.Personality
 import com.ambientcompanion.domain.context.ResourceMode
+import com.ambientcompanion.domain.behavior.QuickAction
 import kotlin.math.roundToInt
 
 enum class AppScreen { HOME, CUSTOMIZE, SETTINGS, PREVIEW, DEBUG }
@@ -248,6 +249,9 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         item { SectionLabel("SCHEDULE") }
         item { ToggleCard("Quiet hours", "10:30 PM–7:00 AM", settings.quietHoursEnabled) { value -> update { it.copy(quietHoursEnabled = value) } } }
         item { ToggleCard("Active hours", "7:00 AM–11:00 PM", settings.activeHoursEnabled) { value -> update { it.copy(activeHoursEnabled = value) } } }
+        item { SectionLabel("ACTIONS") }
+        item { QuickActionPicker(settings.quickActions) { actions -> update { it.copy(quickActions = actions) } } }
+        item { ToggleCard("Start after reboot", "Off by default; requires enabled companion controls", settings.startAfterReboot) { value -> update { it.copy(startAfterReboot = value) } } }
         item { ActionCard("Assistive controls", "Enable Back, Home, Recents and system actions") { openAccessibilitySettings() } }
         item { SectionLabel("COMPANION") }
         item { ActionCard("Appearance", if (settings.companionAppearance == CompanionAppearance.EMOJI) "Emoji · ${settings.selectedEmoji}" else "Ambient mascot") { update { it.copy(companionAppearance = if (it.companionAppearance == CompanionAppearance.AMBIENT) CompanionAppearance.EMOJI else CompanionAppearance.AMBIENT) } } }
@@ -339,6 +343,19 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text("Very small", color = MutedInk, fontSize = 11.sp)
         Text("Very large", color = MutedInk, fontSize = 11.sp)
+    }
+}
+@Composable private fun QuickActionPicker(selected: List<QuickAction>, update: (List<QuickAction>) -> Unit) = PremiumCard {
+    Text("Quick actions · ${selected.size}/4", color = Ink, fontWeight = FontWeight.SemiBold)
+    Spacer(Modifier.height(8.dp))
+    QuickAction.entries.forEach { action ->
+        val checked = action in selected
+        SettingRow(action.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase), if (!checked && selected.size >= 4) "Remove one action first" else "") {
+            Switch(checked, { enabled ->
+                if (enabled && selected.size < 4) update(selected + action)
+                else if (!enabled) update(selected - action)
+            }, enabled = checked || selected.size < 4, colors = premiumSwitchColors())
+        }
     }
 }
 @Composable private fun ActionCard(title: String, subtitle: String, action: () -> Unit) = Surface(Modifier.fillMaxWidth().clickable(onClick = action), color = Color.White.copy(alpha = .88f), shape = RoundedCornerShape(24.dp)) { Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, color = Ink, fontWeight = FontWeight.SemiBold); Text(subtitle, color = MutedInk, fontSize = 13.sp) }; Text("›", color = Aubergine, fontSize = 24.sp) } }

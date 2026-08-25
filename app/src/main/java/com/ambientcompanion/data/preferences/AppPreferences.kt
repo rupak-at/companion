@@ -13,6 +13,7 @@ import com.ambientcompanion.domain.model.WeatherCondition
 import com.ambientcompanion.domain.context.Personality
 import com.ambientcompanion.domain.context.ResourceMode
 import com.ambientcompanion.domain.schedule.OutsideHoursBehavior
+import com.ambientcompanion.domain.behavior.QuickAction
 import java.time.DayOfWeek
 import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
@@ -58,6 +59,9 @@ data class UserSettings(
     val outsideHoursBehavior: OutsideHoursBehavior = OutsideHoursBehavior.SLEEP_IN_PLACE,
     val hiddenUntil: Long = 0L,
     val startAfterReboot: Boolean = false,
+    val quickActions: List<QuickAction> = listOf(
+        QuickAction.HOME, QuickAction.NOTIFICATIONS, QuickAction.SCREENSHOT, QuickAction.REFRESH,
+    ),
     val manualLatitude: Double? = null,
     val manualLongitude: Double? = null,
 )
@@ -110,6 +114,8 @@ class AppPreferences(private val context: Context) {
             outsideHoursBehavior = values[OUTSIDE_HOURS_BEHAVIOR].enumOr(OutsideHoursBehavior.SLEEP_IN_PLACE),
             hiddenUntil = values[HIDDEN_UNTIL] ?: 0L,
             startAfterReboot = values[START_AFTER_REBOOT] ?: false,
+            quickActions = (values[QUICK_ACTIONS] ?: "HOME,NOTIFICATIONS,SCREENSHOT,REFRESH")
+                .split(',').mapNotNull { runCatching { QuickAction.valueOf(it) }.getOrNull() }.distinct().take(4),
             manualLatitude = values[MANUAL_LATITUDE],
             manualLongitude = values[MANUAL_LONGITUDE],
         )
@@ -152,6 +158,7 @@ class AppPreferences(private val context: Context) {
                 it[OUTSIDE_HOURS_BEHAVIOR] = next.outsideHoursBehavior.name
                 it[HIDDEN_UNTIL] = next.hiddenUntil
                 it[START_AFTER_REBOOT] = next.startAfterReboot
+                it[QUICK_ACTIONS] = next.quickActions.distinct().take(4).joinToString(",") { action -> action.name }
                 next.manualLatitude?.let { value -> it[MANUAL_LATITUDE] = value } ?: it.remove(MANUAL_LATITUDE)
                 next.manualLongitude?.let { value -> it[MANUAL_LONGITUDE] = value } ?: it.remove(MANUAL_LONGITUDE)
             }
@@ -239,6 +246,7 @@ class AppPreferences(private val context: Context) {
         private val OUTSIDE_HOURS_BEHAVIOR = stringPreferencesKey("outside_hours_behavior")
         private val HIDDEN_UNTIL = longPreferencesKey("hidden_until")
         private val START_AFTER_REBOOT = booleanPreferencesKey("start_after_reboot")
+        private val QUICK_ACTIONS = stringPreferencesKey("quick_actions")
         private val MANUAL_LATITUDE = doublePreferencesKey("manual_latitude")
         private val MANUAL_LONGITUDE = doublePreferencesKey("manual_longitude")
         private val CACHE_CONDITION = stringPreferencesKey("cache_condition")

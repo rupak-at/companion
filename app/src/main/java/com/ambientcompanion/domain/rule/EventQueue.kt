@@ -10,9 +10,9 @@ class EventQueue(private val capacity: Int = 3, private val now: () -> Long = Sy
         events.removeAll { it.type == event.type }
         events += event
         events.sortByDescending { it.priority }
-        while (events.size > capacity) events.removeLast()
+        while (events.size > capacity) events.removeAt(events.lastIndex)
     }
-    fun poll(): CompanionEvent? { purge(); return events.removeFirstOrNull() }
+    fun poll(): CompanionEvent? { purge(); return if (events.isEmpty()) null else events.removeAt(0) }
     fun snapshot(): List<CompanionEvent> { purge(); return events.toList() }
     private fun purge() { events.removeAll { now() - it.createdAt > it.ttlMs } }
 }

@@ -37,6 +37,7 @@ import com.ambientcompanion.domain.context.CompanionPreferences
 import com.ambientcompanion.domain.context.BatteryState
 import com.ambientcompanion.domain.context.BatteryStateTracker
 import com.ambientcompanion.domain.context.ResourceMode
+import com.ambientcompanion.domain.behavior.QuickAction
 import com.ambientcompanion.domain.rule.RuleEngine
 import com.ambientcompanion.domain.rule.CompanionEvent
 import com.ambientcompanion.domain.rule.CompanionEventType
@@ -112,7 +113,15 @@ class CompanionOverlayService : AccessibilityService() {
         if (settings.companionEnabled && settings.hiddenUntil <= System.currentTimeMillis()) {
             if (companionView == null) showCompanion()
             refreshContext()
-        } else hideCompanion()
+        } else {
+            hideCompanion()
+            if (settings.companionEnabled && settings.hiddenUntil > System.currentTimeMillis()) {
+                handler.postDelayed(
+                    ::syncVisibility,
+                    (settings.hiddenUntil - System.currentTimeMillis()).coerceAtMost(24 * 60 * 60_000L),
+                )
+            }
+        }
     }
 
     private fun hideCompanion(updatePreference: Boolean = false) {
@@ -507,25 +516,19 @@ class CompanionOverlayService : AccessibilityService() {
             }
         }
 
-        if (instance != null) {
-            assistive("←  Back", AssistiveAction.BACK)
-            assistive("⌂  Home", AssistiveAction.HOME)
-            assistive("▣  Recents", AssistiveAction.RECENTS)
-            assistive("Notifications", AssistiveAction.NOTIFICATIONS)
-            assistive("Quick Settings", AssistiveAction.QUICK_SETTINGS)
-            assistive("Lock screen", AssistiveAction.LOCK_SCREEN)
-            assistive("Power dialog", AssistiveAction.POWER_DIALOG)
-            action("Refresh") { refreshContext(true); showMessage("All fresh ✨") }
-        } else {
-            action("Enable assistive controls") {
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
-            action("Why permission?") {
-                showMessage("Enables only user-requested system controls")
+        action("Hide 1 hour") { hideTemporarily(System.currentTimeMillis() + 60 * 60_000L) }
+        action(if (settings.quietHoursEnabled) "Quiet mode off" else "Quiet mode on") {
+            serviceScope.launch {
+                app.preferences.updateSettings { it.copy(quietHoursEnabled = !it.quietHoursEnabled) }
+                syncVisibility()
             }
         }
-        action("Open Ambient") { startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        action("Hide") { hideCompanion(true) }
+        settings.quickActions.take(4).forEach { quick ->
+            action(quick.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase)) {
+                performQuickAction(quick)
+            }
+        }
+        action("Open Ambient") { performQuickAction(QuickAction.OPEN_APP) }
 
         val menuWidth = dp(304)
         val estimatedHeight = dp(if (instance != null) 260 else 116)
@@ -537,6 +540,33 @@ class CompanionOverlayService : AccessibilityService() {
         windowManager.addView(menu, params)
         quickMenuView = menu
         handler.postDelayed(::dismissQuickMenu, 6_000)
+    }
+
+    private fun hideTemporarily(until: Long) {
+        serviceScope.launch {
+            app.preferences.updateSettings { it.copy(hiddenUntil = until) }
+            syncVisibility()
+        }
+    }
+
+    private fun performQuickAction(action: QuickAction) {
+        val assistive = when (action) {
+            QuickAction.BACK -> AssistiveAction.BACK
+            QuickAction.HOME -> AssistiveAction.HOME
+            QuickAction.RECENTS -> AssistiveAction.RECENTS
+            QuickAction.NOTIFICATIONS -> AssistiveAction.NOTIFICATIONS
+            QuickAction.QUICK_SETTINGS -> AssistiveAction.QUICK_SETTINGS
+            QuickAction.LOCK -> AssistiveAction.LOCK_SCREEN
+            QuickAction.POWER_DIALOG -> AssistiveAction.POWER_DIALOG
+            else -> null
+        }
+        when (action) {
+            QuickAction.SCREENSHOT -> requestScreenshot()
+            QuickAction.HIDE -> hideTemporarily(System.currentTimeMillis() + 15 * 60_000L)
+            QuickAction.REFRESH -> { refreshContext(true); showMessage("All fresh ✨") }
+            QuickAction.OPEN_APP -> startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            else -> if (assistive != null && !perform(assistive)) showMessage("Action isn't available here")
+        }
     }
 
     private fun dismissQuickMenu() {
@@ -605,6 +635,8 @@ class CompanionOverlayService : AccessibilityService() {
             }
             return service.performGlobalAction(globalAction)
         }
+
+        fun requestSync() { instance?.syncVisibility() }
     }
 }
 
