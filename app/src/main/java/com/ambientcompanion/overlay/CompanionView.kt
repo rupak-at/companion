@@ -3,6 +3,7 @@ package com.ambientcompanion.overlay
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
@@ -11,13 +12,20 @@ import android.view.View
 import android.view.animation.OvershootInterpolator
 import com.ambientcompanion.data.preferences.CompanionAppearance
 import com.ambientcompanion.domain.model.CompanionState
+import com.ambientcompanion.R
+import com.ambientcompanion.renderer.AccessoryId
+import com.ambientcompanion.renderer.AnimationId
+import com.ambientcompanion.renderer.CompanionRenderer
 
-class CompanionView(context: Context) : View(context) {
+class CompanionView(context: Context) : View(context), CompanionRenderer {
     private var state: CompanionState = CompanionState.DAY_CLEAR
     private var appearance = CompanionAppearance.AMBIENT
     private var emoji = "😊"
     private var idleOpacity = .72f
     private var reducedMotion = false
+    private var accessory: AccessoryId? = null
+    private val mascot = BitmapFactory.decodeResource(resources, R.drawable.companion_mascot)
+    private val mascotPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val facePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(58, 46, 56)
@@ -76,32 +84,8 @@ class CompanionView(context: Context) : View(context) {
         val cx = width / 2f
         val cy = height / 2f
         val radius = minOf(width, height) * 0.37f
-
-        canvas.drawOval(cx - radius, cy + radius * 0.78f, cx + radius, cy + radius * 1.06f, shadowPaint)
-        canvas.drawCircle(cx, cy, radius, bodyPaint)
-
-        facePaint.strokeWidth = radius * 0.13f
-        if (state == CompanionState.NIGHT_SLEEP) {
-            facePaint.style = Paint.Style.STROKE
-            canvas.drawLine(cx - radius * .45f, cy - radius * .08f, cx - radius * .22f, cy - radius * .08f, facePaint)
-            canvas.drawLine(cx + radius * .22f, cy - radius * .08f, cx + radius * .45f, cy - radius * .08f, facePaint)
-        } else {
-            canvas.drawPoint(cx - radius * 0.34f, cy - radius * 0.1f, facePaint)
-            canvas.drawPoint(cx + radius * 0.34f, cy - radius * 0.1f, facePaint)
-        }
-        facePaint.style = Paint.Style.STROKE
-        facePaint.strokeWidth = radius * 0.08f
-        canvas.drawArc(
-            cx - radius * 0.24f,
-            cy,
-            cx + radius * 0.24f,
-            cy + radius * 0.38f,
-            10f,
-            160f,
-            false,
-            facePaint,
-        )
-        facePaint.style = Paint.Style.FILL
+        mascotPaint.colorFilter = stateTint(state)
+        canvas.drawBitmap(mascot, null, android.graphics.RectF(0f, 0f, width.toFloat(), height.toFloat()), mascotPaint)
         drawAccessory(canvas, cx, cy, radius)
     }
 
@@ -192,6 +176,23 @@ class CompanionView(context: Context) : View(context) {
         animate().cancel()
     }
 
+    override fun setState(state: CompanionState) = applyState(state, reducedMotion)
+
+    override fun play(animation: AnimationId) {
+        when (animation) {
+            AnimationId.TAP_HAPPY -> performClick()
+            AnimationId.DOUBLE_TAP_SURPRISED -> playSurprisedReaction()
+            AnimationId.DRAG -> setDragging(true)
+            AnimationId.EDGE_LAND -> setDragging(false)
+            else -> startIdleAnimation(reducedMotion)
+        }
+    }
+
+    override fun setAccessory(accessory: AccessoryId?) { this.accessory = accessory; invalidate() }
+    override fun setOpacity(value: Float) { idleOpacity = value.coerceIn(.35f, 1f) }
+    override fun pause() = pauseAnimation()
+    override fun resume() = startIdleAnimation(reducedMotion)
+
     fun applyState(next: CompanionState, reducedMotion: Boolean) {
         if (next == state) return
         val apply = {
@@ -249,16 +250,16 @@ class CompanionView(context: Context) : View(context) {
     private fun drawAccessory(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
         facePaint.style = Paint.Style.STROKE
         facePaint.strokeWidth = radius * .07f
-        when (state) {
-            CompanionState.MORNING_RAIN, CompanionState.DAY_RAIN, CompanionState.EVENING_RAIN, CompanionState.NIGHT_RAIN -> {
+        when (accessory ?: state.defaultAccessory()) {
+            AccessoryId.UMBRELLA -> {
                 facePaint.color = Color.rgb(64, 108, 145)
                 canvas.drawArc(cx - radius * .65f, cy - radius * 1.35f, cx + radius * .65f, cy - radius * .5f, 185f, 170f, false, facePaint)
             }
-            CompanionState.COLD, CompanionState.SNOW -> {
+            AccessoryId.SCARF -> {
                 facePaint.color = Color.rgb(128, 70, 105)
                 canvas.drawLine(cx - radius * .65f, cy + radius * .48f, cx + radius * .65f, cy + radius * .48f, facePaint)
             }
-            CompanionState.STORM -> {
+            AccessoryId.CHARGING_SPARK -> {
                 facePaint.color = Color.rgb(255, 225, 92)
                 canvas.drawLine(cx + radius * .65f, cy - radius, cx + radius * .35f, cy - radius * .45f, facePaint)
             }
@@ -266,6 +267,25 @@ class CompanionView(context: Context) : View(context) {
         }
         facePaint.color = Color.rgb(58, 46, 56)
         facePaint.style = Paint.Style.FILL
+    }
+
+    private fun CompanionState.defaultAccessory(): AccessoryId? = when (this) {
+        CompanionState.MORNING_RAIN, CompanionState.DAY_RAIN, CompanionState.EVENING_RAIN,
+        CompanionState.NIGHT_RAIN -> AccessoryId.UMBRELLA
+        CompanionState.COLD, CompanionState.SNOW -> AccessoryId.SCARF
+        CompanionState.STORM -> AccessoryId.CHARGING_SPARK
+        CompanionState.NIGHT_SLEEP -> AccessoryId.SLEEP_CAP
+        else -> null
+    }
+
+    private fun stateTint(state: CompanionState): android.graphics.ColorFilter? = when (state) {
+        CompanionState.NIGHT_CLEAR, CompanionState.NIGHT_CLOUDY, CompanionState.NIGHT_RAIN,
+        CompanionState.NIGHT_SLEEP -> android.graphics.PorterDuffColorFilter(
+            Color.argb(205, 170, 160, 230), android.graphics.PorterDuff.Mode.MULTIPLY,
+        )
+        CompanionState.MORNING_RAIN, CompanionState.DAY_RAIN, CompanionState.EVENING_RAIN ->
+            android.graphics.PorterDuffColorFilter(Color.rgb(205, 225, 235), android.graphics.PorterDuff.Mode.MULTIPLY)
+        else -> null
     }
 
     private fun colorsFor(state: CompanionState): Pair<Int, Int> = when (state) {
