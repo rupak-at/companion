@@ -39,6 +39,18 @@ import com.ambientcompanion.domain.schedule.OutsideHoursBehavior
 import com.ambientcompanion.data.preferences.SettingsMigration
 import java.time.DayOfWeek
 import com.ambientcompanion.overlay.CompanionOverlayService
+import com.ambientcompanion.domain.context.AmbientContext
+import com.ambientcompanion.domain.context.AudioOutputType
+import com.ambientcompanion.domain.context.CompanionPreferences
+import com.ambientcompanion.domain.context.DeviceContext
+import com.ambientcompanion.domain.context.NetworkState
+import com.ambientcompanion.domain.model.CompanionContext
+import com.ambientcompanion.domain.model.TimePeriod
+import com.ambientcompanion.domain.model.WeatherCondition
+import com.ambientcompanion.domain.rule.RuleEngine
+import com.ambientcompanion.domain.message.MessageEngine
+import com.ambientcompanion.domain.message.MessagePackId
+import com.ambientcompanion.domain.message.MessageRequest
 import kotlin.math.roundToInt
 
 enum class AppScreen { HOME, CUSTOMIZE, SETTINGS, PREVIEW, DEBUG }
@@ -303,10 +315,45 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
     }
 }
 
-@Composable private fun Preview(settings: UserSettings, preview: (CompanionState) -> Unit, navigate: (AppScreen) -> Unit) = ScreenList("V2 preview", { navigate(AppScreen.HOME) }) {
-    item { PremiumCard { Text("Simulation", color = Ink, fontWeight = FontWeight.SemiBold); Text("Personality: ${settings.personality.name.lowercase()} · Theme: ${settings.theme}", color = MutedInk); Text("Battery 12% · Charging off · Network offline · Headphones on · Weekend", color = MutedInk, fontSize = 12.sp) } }
-    item { PremiumCard { Text("Persistent rule", color = AmberDeep, fontSize = 11.sp, fontWeight = FontWeight.Bold); Text("CRITICAL_BATTERY", color = Ink, fontWeight = FontWeight.SemiBold); Text("Temporary event: HEADPHONES_CONNECTED", color = MutedInk); Text("Accessory: HEADPHONES", color = MutedInk); Text("Message: “Feed me 🔌”", color = MutedInk) } }
-    items(CompanionState.entries) { state -> Surface(Modifier.fillMaxWidth().clickable { preview(state) }, color = Color.White.copy(alpha = .88f), shape = RoundedCornerShape(24.dp)) { Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Mascot(state, 54); Column(Modifier.padding(start = 16.dp)) { Text(state.displayName(), color = Ink, fontWeight = FontWeight.SemiBold); Text("Tap to preview on the overlay", color = MutedInk, fontSize = 12.sp) } } } }
+@Composable private fun Preview(settings: UserSettings, preview: (CompanionState) -> Unit, navigate: (AppScreen) -> Unit) {
+    var period by remember { mutableStateOf(TimePeriod.DAY) }
+    var weather by remember { mutableStateOf(WeatherCondition.CLEAR) }
+    var temperature by remember { mutableFloatStateOf(20f) }
+    var battery by remember { mutableIntStateOf(74) }
+    var charging by remember { mutableStateOf(false) }
+    var online by remember { mutableStateOf(true) }
+    var headphones by remember { mutableStateOf(false) }
+    var weekend by remember { mutableStateOf(false) }
+    var quiet by remember { mutableStateOf(false) }
+    var personality by remember { mutableStateOf(settings.personality) }
+    var theme by remember { mutableStateOf(settings.theme) }
+    val environment = CompanionContext(period, weather, temperature.toDouble(), period != TimePeriod.NIGHT)
+    val ambient = AmbientContext(environment, DeviceContext(
+        batteryPercent = battery, isCharging = charging, isBatteryFull = battery == 100,
+        networkState = if (online) NetworkState.ONLINE else NetworkState.OFFLINE,
+        isHeadphonesConnected = headphones,
+        audioOutputType = if (headphones) AudioOutputType.BLUETOOTH else AudioOutputType.SPEAKER,
+        dayOfWeek = if (weekend) DayOfWeek.SATURDAY else DayOfWeek.MONDAY, isWeekend = weekend,
+    ), CompanionPreferences(personality = personality, quietHoursActive = quiet))
+    val resolved = RuleEngine().resolve(ambient)
+    val pack = runCatching { MessagePackId.valueOf(settings.messagePack.uppercase()) }.getOrDefault(MessagePackId.DEFAULT)
+    val message = MessageEngine().select(MessageRequest(resolved.behavior.visualState, personality, pack)).text
+    ScreenList("V2 preview", { navigate(AppScreen.HOME) }) {
+        item { PremiumCard { Row(verticalAlignment = Alignment.CenterVertically) { Mascot(resolved.behavior.visualState, 86); Column(Modifier.padding(start = 14.dp)) { Text(resolved.winningRuleId.uppercase(), color = Ink, fontWeight = FontWeight.SemiBold); Text("Temporary: ${if (headphones) "HEADPHONES_CONNECTED" else "none"}", color = MutedInk); Text("Accessory: ${resolved.behavior.accessory ?: if (headphones) "HEADPHONES" else "none"}", color = MutedInk); Text("Message: “$message”", color = MutedInk) } } } }
+        item { ActionCard("Time", period.name) { period = TimePeriod.entries[(period.ordinal + 1) % TimePeriod.entries.size] } }
+        item { ActionCard("Weather", weather.name) { weather = WeatherCondition.entries[(weather.ordinal + 1) % WeatherCondition.entries.size] } }
+        item { PremiumCard { SettingRow("Temperature", "${temperature.roundToInt()}°C") { Text("${temperature.roundToInt()}°", color = Aubergine) }; Slider(temperature, { temperature = it }, valueRange = -15f..45f) } }
+        item { PremiumCard { SettingRow("Battery", "$battery%") { Text("$battery%", color = Aubergine) }; Slider(battery.toFloat(), { battery = it.roundToInt() }, valueRange = 0f..100f) } }
+        item { ToggleCard("Charging", "Simulate power connection", charging) { charging = it } }
+        item { ToggleCard("Network", if (online) "Online" else "Offline", online) { online = it } }
+        item { ToggleCard("Headphones", "Simulate audio output", headphones) { headphones = it } }
+        item { ToggleCard("Weekend", "Use configured weekend mood", weekend) { weekend = it } }
+        item { ToggleCard("Quiet hours", "Suppress automatic messages", quiet) { quiet = it } }
+        item { ActionCard("Personality", personality.name) { personality = com.ambientcompanion.domain.context.Personality.entries[(personality.ordinal + 1) % com.ambientcompanion.domain.context.Personality.entries.size] } }
+        item { ActionCard("Theme", theme) { val themes = listOf("default", "night glow", "warm sunset", "cloud", "mono"); theme = themes[(themes.indexOf(theme) + 1).mod(themes.size)] } }
+        item { SectionLabel("DIRECT VISUAL PREVIEW") }
+        items(CompanionState.entries) { state -> Surface(Modifier.fillMaxWidth().clickable { preview(state) }, color = Color.White.copy(alpha = .88f), shape = RoundedCornerShape(24.dp)) { Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Mascot(state, 54); Column(Modifier.padding(start = 16.dp)) { Text(state.displayName(), color = Ink, fontWeight = FontWeight.SemiBold); Text("Tap to preview on the overlay", color = MutedInk, fontSize = 12.sp) } } } }
+    }
 }
 
 @Composable private fun Debug(settings: UserSettings, snapshot: ContextSnapshot?, preview: (CompanionState) -> Unit, navigate: (AppScreen) -> Unit) = ScreenList("Rule debugger", { navigate(AppScreen.SETTINGS) }) {
