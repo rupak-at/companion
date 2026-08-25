@@ -335,6 +335,13 @@ class CompanionOverlayService : AccessibilityService() {
         return java.time.Duration.between(now, target).toMillis().coerceAtLeast(1_000L)
     }
 
+    private fun nextOccurrenceMillis(minutes: Int): Long {
+        val now = ZonedDateTime.now()
+        var target = now.withHour(minutes / 60).withMinute(minutes % 60).withSecond(0).withNano(0)
+        if (!target.isAfter(now)) target = target.plusDays(1)
+        return target.toInstant().toEpochMilli()
+    }
+
     private fun applyState(state: CompanionState) {
         if (state == currentState) return
         currentState = state
@@ -387,9 +394,10 @@ class CompanionOverlayService : AccessibilityService() {
         var touchY = 0f
         var dragged = false
         var longPressed = false
-        var tapCount = 0
+        val gestureCoordinator = OverlayGestureCoordinator(TAP_WINDOW_MS)
         lateinit var tapAction: Runnable
         fun runTapAction() {
+            val tapCount = gestureCoordinator.consumeTaps()
             when (tapCount) {
                 1 -> {
                     view.performClick()
@@ -412,7 +420,6 @@ class CompanionOverlayService : AccessibilityService() {
                 animationStateMachine.finish()
                 currentAnimation = AnimationId.IDLE
             }, 700L)
-            tapCount = 0
         }
         tapAction = Runnable(::runTapAction)
         val gestures = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
@@ -441,8 +448,9 @@ class CompanionOverlayService : AccessibilityService() {
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val screen = screenSize()
-                    val becameDragged = !dragged && (abs(event.rawX - touchX) > view.touchSlop() ||
-                        abs(event.rawY - touchY) > view.touchSlop())
+                    val becameDragged = !dragged && gestureCoordinator.isDrag(
+                        event.rawX - touchX, event.rawY - touchY, view.touchSlop(),
+                    )
                     dragged = dragged || becameDragged
                     params.x = (initialX + event.rawX - touchX).roundToInt()
                         .coerceIn(0, (screen.x - view.width).coerceAtLeast(0))
@@ -455,7 +463,7 @@ class CompanionOverlayService : AccessibilityService() {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (dragged) { renderer?.play(AnimationId.EDGE_LAND); animationStateMachine.finish() }
                     if (!dragged && !longPressed && event.actionMasked == MotionEvent.ACTION_UP) {
-                        tapCount++
+                        val tapCount = gestureCoordinator.registerTap(android.os.SystemClock.uptimeMillis())
                         handler.removeCallbacks(tapAction)
                         if (tapCount >= 3) runTapAction() else handler.postDelayed(tapAction, TAP_WINDOW_MS)
                     }
@@ -588,7 +596,13 @@ class CompanionOverlayService : AccessibilityService() {
             }
         }
 
+        action("Hide 15 minutes") { hideTemporarily(System.currentTimeMillis() + 15 * 60_000L) }
         action("Hide 1 hour") { hideTemporarily(System.currentTimeMillis() + 60 * 60_000L) }
+        action("Until evening") { hideTemporarily(nextOccurrenceMillis(18 * 60)) }
+        action("Until tomorrow") {
+            val now = ZonedDateTime.now()
+            hideTemporarily(now.plusDays(1).toLocalDate().atStartOfDay(now.zone).toInstant().toEpochMilli())
+        }
         action(if (settings.quietHoursEnabled) "Quiet mode off" else "Quiet mode on") {
             serviceScope.launch {
                 app.preferences.updateSettings { it.copy(quietHoursEnabled = !it.quietHoursEnabled) }
