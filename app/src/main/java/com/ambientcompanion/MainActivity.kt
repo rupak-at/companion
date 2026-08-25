@@ -23,6 +23,10 @@ import com.ambientcompanion.ui.AppScreen
 import kotlinx.coroutines.launch
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import com.ambientcompanion.domain.screen.ScreenContext
+import com.ambientcompanion.domain.screen.AppProfile
+import com.ambientcompanion.ui.InstalledAppEntry
+import com.ambientcompanion.data.profile.AppCategoryResolver
 
 class MainActivity : ComponentActivity() {
     private val app get() = application as AmbientApplication
@@ -31,6 +35,7 @@ class MainActivity : ComponentActivity() {
     private var snapshotState = androidx.compose.runtime.mutableStateOf<ContextSnapshot?>(null)
     private var screenState = androidx.compose.runtime.mutableStateOf(AppScreen.HOME)
     private var accessibilityEnabledState = androidx.compose.runtime.mutableStateOf(false)
+    private var screenContextState = androidx.compose.runtime.mutableStateOf(ScreenContext.EMPTY)
     private var pendingBluetoothSettings: UserSettings? = null
 
     private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -47,11 +52,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                app.preferences.settings.collect { settings ->
-                    settingsState.value = settings
-                    settingsLoadedState.value = true
-                    sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
+                launch {
+                    app.preferences.settings.collect { settings ->
+                        settingsState.value = settings
+                        settingsLoadedState.value = true
+                        sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
+                    }
                 }
+                launch { app.screenContextSource.state.collect { screenContextState.value = it } }
             }
         }
         refreshContext()
@@ -60,6 +68,8 @@ class MainActivity : ComponentActivity() {
                 settings = settingsState.value,
                 settingsLoaded = settingsLoadedState.value,
                 snapshot = snapshotState.value,
+                screenContext = screenContextState.value,
+                installedApps = installedApps(),
                 screen = screenState.value,
                 hasAccessibilityPermission = accessibilityEnabledState.value,
                 overlayRunning = CompanionOverlayService.isRunning,
@@ -75,6 +85,11 @@ class MainActivity : ComponentActivity() {
                 },
                 onAddQuickTile = ::requestQuickSettingsTile,
                 onOpenAccessibilitySettings = ::openAccessibilityServiceSettings,
+                onSaveAppProfile = { profile ->
+                    app.appProfileRepository.save(profile)
+                    sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
+                },
+                onClearActivityData = { app.wellbeingRepository.clear() },
                 onPreviewState = { state ->
                     sendBroadcast(Intent(CompanionOverlayService.ACTION_PREVIEW).setPackage(packageName).apply {
                         action = CompanionOverlayService.ACTION_PREVIEW
@@ -83,6 +98,20 @@ class MainActivity : ComponentActivity() {
                 },
             )
         }
+    }
+
+    private fun installedApps(): List<InstalledAppEntry> {
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val categoryResolver = AppCategoryResolver()
+        return packageManager.queryIntentActivities(intent, 0).map { info ->
+            val appPackage = info.activityInfo.packageName
+            val category = categoryResolver.resolve(appPackage)
+            InstalledAppEntry(
+                packageName = appPackage,
+                label = info.loadLabel(packageManager).toString(),
+                profile = app.appProfileRepository.profileFor(appPackage, category),
+            )
+        }.distinctBy(InstalledAppEntry::packageName).sortedBy { it.label.lowercase() }
     }
 
     override fun onResume() {

@@ -1145,6 +1145,10 @@ class CompanionOverlayService : AccessibilityService() {
                 accessory = service.currentAccessory?.name,
                 renderer = if (service.settings.resourceMode == ResourceMode.MINIMAL) "EMOJI" else service.settings.companionAppearance.name,
                 resourceMode = service.settings.resourceMode.name,
+                screenContext = service.currentScreenContext,
+                wellbeingContext = service.wellbeingContext,
+                lastWellbeingReaction = service.lastWellbeingReaction,
+                attentionExplanation = service.attentionExplanation,
             )
         }
     }
@@ -1158,6 +1162,10 @@ data class OverlayDebugSnapshot(
     val accessory: String?,
     val renderer: String,
     val resourceMode: String,
+    val screenContext: ScreenContext,
+    val wellbeingContext: WellbeingContext,
+    val lastWellbeingReaction: String?,
+    val attentionExplanation: String,
 )
 
 private fun UserSettings.messagePackId(): MessagePackId = runCatching {

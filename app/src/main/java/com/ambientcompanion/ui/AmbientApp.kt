@@ -51,15 +51,22 @@ import com.ambientcompanion.domain.rule.RuleEngine
 import com.ambientcompanion.domain.message.MessageEngine
 import com.ambientcompanion.domain.message.MessagePackId
 import com.ambientcompanion.domain.message.MessageRequest
+import com.ambientcompanion.domain.screen.AppProfile
+import com.ambientcompanion.domain.screen.CompanionDisplayMode
+import com.ambientcompanion.domain.screen.ScreenContext
+import com.ambientcompanion.domain.wellbeing.WellbeingReactionStyle
 import kotlin.math.roundToInt
 
-enum class AppScreen { HOME, CUSTOMIZE, SETTINGS, PREVIEW, DEBUG }
+enum class AppScreen { HOME, CUSTOMIZE, SETTINGS, SCREEN_AWARENESS, WELLBEING, PRIVACY, APP_PROFILES, PREVIEW, DEBUG }
+data class InstalledAppEntry(val packageName: String, val label: String, val profile: AppProfile)
 
 @Composable
 fun AmbientApp(
     settings: UserSettings,
     settingsLoaded: Boolean,
     snapshot: ContextSnapshot?,
+    screenContext: ScreenContext,
+    installedApps: List<InstalledAppEntry>,
     screen: AppScreen,
     hasAccessibilityPermission: Boolean,
     overlayRunning: Boolean,
@@ -72,6 +79,8 @@ fun AmbientApp(
     onResetPosition: () -> Unit,
     onAddQuickTile: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
+    onSaveAppProfile: (AppProfile) -> Unit,
+    onClearActivityData: () -> Unit,
     onPreviewState: (CompanionState) -> Unit,
 ) {
     MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(primary = Aubergine, surface = Porcelain)) {
@@ -87,9 +96,13 @@ fun AmbientApp(
         } else if (settings.schemaVersion < SettingsMigration.CURRENT_SCHEMA_VERSION) {
             WhatsNew { onUpdateSettings { SettingsMigration.migrate(it) } }
         } else when (screen) {
-            AppScreen.HOME -> Home(settings, snapshot, overlayRunning, hasAccessibilityPermission, onToggleCompanion, onOpenAccessibilitySettings, onRefresh, onNavigate)
+            AppScreen.HOME -> Home(settings, snapshot, screenContext, overlayRunning, hasAccessibilityPermission, onToggleCompanion, onOpenAccessibilitySettings, onRefresh, onUpdateSettings, onNavigate)
             AppScreen.CUSTOMIZE -> Customize(settings, onUpdateSettings, onNavigate)
             AppScreen.SETTINGS -> Settings(settings, onToggleCompanion, onUpdateSettings, onResetPosition, onAddQuickTile, onOpenAccessibilitySettings, onRefresh, onNavigate)
+            AppScreen.SCREEN_AWARENESS -> ScreenAwareness(settings, hasAccessibilityPermission, onUpdateSettings, onOpenAccessibilitySettings, onNavigate)
+            AppScreen.WELLBEING -> WellbeingSettings(settings, onUpdateSettings, onNavigate)
+            AppScreen.PRIVACY -> PrivacySettings(settings, onUpdateSettings, onClearActivityData, onNavigate)
+            AppScreen.APP_PROFILES -> AppProfiles(settings, installedApps, onUpdateSettings, onSaveAppProfile, onNavigate)
             AppScreen.PREVIEW -> Preview(settings, onPreviewState, onNavigate)
             AppScreen.DEBUG -> Debug(settings, snapshot, onPreviewState, onNavigate)
         }
@@ -106,9 +119,9 @@ private fun WhatsNew(continueToApp: () -> Unit) {
         ) {
             Mascot(CompanionState.WEEKEND, 148)
             Spacer(Modifier.height(28.dp))
-            Text("What’s new in V2", color = Ink, fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
+            Text("What’s new in V3", color = Ink, fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(18.dp))
-            listOf("Animated companion", "Battery & charging reactions", "Headphone reactions", "Quiet hours", "New personalities and themes").forEach {
+            listOf("Optional screen awareness", "Smart obstruction avoidance", "Private contextual actions", "Per-app behavior", "Gentle wellbeing reminders").forEach {
                 Text("✓  $it", color = MutedInk, fontSize = 16.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
             }
             Spacer(Modifier.height(28.dp))
@@ -145,7 +158,7 @@ private fun Onboarding(
         "A tiny companion designed to make ordinary moments feel a little warmer.",
         "Morning energy, evening calm, and a sleepy face when the day winds down.",
         "Approximate location helps Ambient notice rain, warmth, and daylight. Your location history is never stored.",
-        "In Accessibility, open Ambient Companion controls and turn on its main switch. Leave Shortcut off unless you want Android's optional quick toggle.",
+        "In Accessibility, open Ambient Companion controls and turn on its main switch. Optional Screen Awareness derives structure like typing or scrolling locally; raw content is never stored.",
         "Your companion is ready to say hello.",
     )
     PremiumBackground {
@@ -173,11 +186,13 @@ private fun Onboarding(
 private fun Home(
     settings: UserSettings,
     snapshot: ContextSnapshot?,
+    screenContext: ScreenContext,
     running: Boolean,
     accessibilityEnabled: Boolean,
     toggle: (Boolean) -> Unit,
     openAccessibilitySettings: () -> Unit,
     refresh: () -> Unit,
+    update: ((UserSettings) -> UserSettings) -> Unit,
     navigate: (AppScreen) -> Unit,
 ) {
     val state = snapshot?.state ?: CompanionState.DAY_CLEAR
@@ -187,6 +202,18 @@ private fun Home(
             Text(messageFor(state), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(6.dp)); Text(contextLine(snapshot), color = MutedInk, fontSize = 14.sp); Spacer(Modifier.height(30.dp))
             PremiumCard { SettingRow("Floating companion", if (running) "Here with you" else "Currently resting") { Switch(running, toggle, colors = premiumSwitchColors()) } }
+            Spacer(Modifier.height(14.dp))
+            PremiumCard {
+                SettingRow(
+                    "Screen awareness",
+                    if (!settings.screenAwarenessEnabled) "Off · V1/V2 behavior continues" else if (screenContext.packageName == null) "Waiting for screen context" else "${screenContext.screenType.name.lowercase().replaceFirstChar(Char::uppercase)} · ${screenContext.appCategory.name.lowercase().replaceFirstChar(Char::uppercase)}",
+                ) {
+                    Switch(settings.screenAwarenessEnabled, { enabled ->
+                        update { it.copy(screenAwarenessEnabled = enabled) }
+                        if (enabled && !accessibilityEnabled) openAccessibilitySettings()
+                    }, colors = premiumSwitchColors())
+                }
+            }
             Spacer(Modifier.height(14.dp))
             if (!accessibilityEnabled) {
                 ActionCard(
@@ -283,6 +310,11 @@ private fun Customize(
 private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit, update: ((UserSettings) -> UserSettings) -> Unit, reset: () -> Unit, addQuickTile: () -> Unit, openAccessibilitySettings: () -> Unit, refresh: () -> Unit, navigate: (AppScreen) -> Unit) {
     var taps by remember { mutableIntStateOf(0) }
     ScreenList("Settings", { navigate(AppScreen.HOME) }) {
+        item { SectionLabel("V3 AWARENESS") }
+        item { ActionCard("Screen awareness", if (settings.screenAwarenessEnabled) "On · screen structure stays local" else "Off · V1/V2 remains available") { navigate(AppScreen.SCREEN_AWARENESS) } }
+        item { ActionCard("Digital wellbeing", if (settings.wellbeingTrackingEnabled) "Active time and scrolling" else "Off") { navigate(AppScreen.WELLBEING) } }
+        item { ActionCard("Per-app profiles", "Normal, Small, Quiet, Peek, Hidden or Privacy") { navigate(AppScreen.APP_PROFILES) } }
+        item { ActionCard("Privacy", "Sensitive mode, exclusions and local data") { navigate(AppScreen.PRIVACY) } }
         item { SectionLabel("EXPERIENCE") }
         item { ToggleCard("Companion", "Show above your apps", settings.companionEnabled, toggleCompanion) }
         item { ToggleCard("Messages", "Show dialogue when you tap", settings.messagesEnabled) { value -> update { it.copy(messagesEnabled = value) } } }
@@ -328,8 +360,141 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         item { ActionCard("Quick Settings button", "Add a system-area show/hide control", addQuickTile) }
         item { ActionCard("Refresh weather", "Update environmental context", refresh) }
         item { SectionLabel("ABOUT") }
-        item { ActionCard("Ambient Companion", "Version 0.2.0") { taps++; if (taps >= 7) navigate(AppScreen.DEBUG) } }
+        item { ActionCard("Ambient Companion", "Version 0.3.0") { taps++; if (taps >= 7) navigate(AppScreen.DEBUG) } }
     }
+}
+
+@Composable
+private fun ScreenAwareness(
+    settings: UserSettings,
+    accessibilityEnabled: Boolean,
+    update: ((UserSettings) -> UserSettings) -> Unit,
+    openAccessibilitySettings: () -> Unit,
+    navigate: (AppScreen) -> Unit,
+) = ScreenList("Screen Awareness", { navigate(AppScreen.SETTINGS) }) {
+    item {
+        PremiumCard {
+            Text("Understands structure, not content", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+            Spacer(Modifier.height(8.dp))
+            Text("Ambient can derive whether you’re typing, scrolling, viewing a form, or watching fullscreen media. Raw accessibility text is processed ephemerally and never stored or sent to the cloud.", color = MutedInk, lineHeight = 20.sp)
+        }
+    }
+    item { ToggleCard("Enabled", if (accessibilityEnabled) "Accessibility service connected" else "Enable the service in Android settings", settings.screenAwarenessEnabled) { enabled ->
+        update { it.copy(screenAwarenessEnabled = enabled) }
+        if (enabled && !accessibilityEnabled) openAccessibilitySettings()
+    } }
+    item { ToggleCard("Smart repositioning", "Moves silently around keyboards, fields and dialogs", settings.smartRepositioningEnabled) { value -> update { it.copy(smartRepositioningEnabled = value) } } }
+    item { ToggleCard("Context actions", "Only run after you choose them", settings.contextActionsEnabled) { value -> update { it.copy(contextActionsEnabled = value) } } }
+    item { ToggleCard("Sensitive Screen Mode", "Restricts actions and messages on private screens", settings.sensitiveScreenModeEnabled) { value -> update { it.copy(sensitiveScreenModeEnabled = value) } } }
+    item { ActionCard("Per-app profiles", "Choose Normal, Small, Quiet, Peek, Hidden or Privacy") { navigate(AppScreen.APP_PROFILES) } }
+    if (!accessibilityEnabled) item { ActionCard("Open Android Accessibility", "V1/V2 features keep working if you decline", openAccessibilitySettings) }
+}
+
+@Composable
+private fun WellbeingSettings(
+    settings: UserSettings,
+    update: ((UserSettings) -> UserSettings) -> Unit,
+    navigate: (AppScreen) -> Unit,
+) = ScreenList("Digital Wellbeing", { navigate(AppScreen.SETTINGS) }) {
+    item { Text("Local counters distinguish recent interaction from simply leaving an app open. Reminders never block an app.", color = MutedInk, lineHeight = 20.sp) }
+    item { ToggleCard("Active-session tracking", "Pauses after three idle minutes", settings.wellbeingTrackingEnabled) { value -> update { it.copy(wellbeingTrackingEnabled = value) } } }
+    item { ToggleCard("Long-scroll reminders", "Optional, cooldown-controlled nudges", settings.longScrollRemindersEnabled) { value -> update { it.copy(longScrollRemindersEnabled = value) } } }
+    item { ToggleCard("App-open reactions", "A light reaction after repeated opens", settings.appOpenReactionsEnabled) { value -> update { it.copy(appOpenReactionsEnabled = value) } } }
+    item { ActionCard("First reminder", "${settings.firstScrollReminderMinutes} minutes") { update { it.copy(firstScrollReminderMinutes = if (it.firstScrollReminderMinutes >= 60) 15 else it.firstScrollReminderMinutes + 15) } } }
+    item { ActionCard("Strong reminder", "${settings.strongScrollReminderMinutes} minutes") { update { it.copy(strongScrollReminderMinutes = if (it.strongScrollReminderMinutes >= 120) 30 else it.strongScrollReminderMinutes + 15) } } }
+    item { ActionCard("Reaction style", settings.wellbeingReactionStyle.name.lowercase().replaceFirstChar(Char::uppercase)) { update { it.copy(wellbeingReactionStyle = WellbeingReactionStyle.entries[(it.wellbeingReactionStyle.ordinal + 1) % WellbeingReactionStyle.entries.size]) } } }
+    item { ToggleCard("Daily totals", "Stored only on this device", settings.dailyTotalsEnabled) { value -> update { it.copy(dailyTotalsEnabled = value) } } }
+    item { ToggleCard("Break suggestions", "A user-started two-minute pause", settings.breakSuggestionsEnabled) { value -> update { it.copy(breakSuggestionsEnabled = value) } } }
+    item { ActionCard("Excluded apps", "Choose apps that wellbeing should ignore") { navigate(AppScreen.APP_PROFILES) } }
+}
+
+@Composable
+private fun PrivacySettings(
+    settings: UserSettings,
+    update: ((UserSettings) -> UserSettings) -> Unit,
+    clearActivityData: () -> Unit,
+    navigate: (AppScreen) -> Unit,
+) = ScreenList("Privacy", { navigate(AppScreen.SETTINGS) }) {
+    item { ToggleCard("Sensitive Screen Mode", "Passwords, authentication and finance use Privacy mode", settings.sensitiveScreenModeEnabled) { value -> update { it.copy(sensitiveScreenModeEnabled = value) } } }
+    item {
+        PremiumCard {
+            Text("Privacy dashboard", color = Ink, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(10.dp))
+            PrivacyLine("Screen Awareness", if (settings.screenAwarenessEnabled) "ON" else "OFF")
+            PrivacyLine("Wellbeing Tracking", if (settings.wellbeingTrackingEnabled) "ON" else "OFF")
+            PrivacyLine("Notification Awareness", "OFF")
+            PrivacyLine("Raw screen storage", "NEVER")
+            PrivacyLine("Cloud screen processing", "OFF")
+        }
+    }
+    item { ActionCard("Never inspect apps", "${settings.excludedScreenApps.size} excluded") { navigate(AppScreen.APP_PROFILES) } }
+    item { ActionCard("Clear V3 activity data", "Clears daily counts, sessions, scroll totals and reaction state", clearActivityData) }
+    item { Text("This does not change companion position, themes, schedules, or general preferences.", color = MutedInk, fontSize = 12.sp) }
+}
+
+@Composable
+private fun AppProfiles(
+    settings: UserSettings,
+    installedApps: List<InstalledAppEntry>,
+    update: ((UserSettings) -> UserSettings) -> Unit,
+    saveProfile: (AppProfile) -> Unit,
+    navigate: (AppScreen) -> Unit,
+) {
+    var localProfiles by remember { mutableStateOf(emptyMap<String, AppProfile>()) }
+    ScreenList("Per-app profiles", { navigate(AppScreen.SETTINGS) }) {
+        item { Text("Your override always wins. Finance defaults to Privacy, video to Edge Peek, games to Hidden, messaging to Small, and system apps to Quiet.", color = MutedInk, lineHeight = 20.sp) }
+        items(installedApps, key = InstalledAppEntry::packageName) { entry ->
+            val profile = localProfiles[entry.packageName] ?: entry.profile
+            AppPolicyCard(
+                entry = entry,
+                profile = profile,
+                inspect = entry.packageName !in settings.excludedScreenApps,
+                wellbeing = entry.packageName !in settings.excludedWellbeingApps,
+                cycleMode = {
+                    val next = profile.copy(displayMode = CompanionDisplayMode.entries[(profile.displayMode.ordinal + 1) % CompanionDisplayMode.entries.size])
+                    localProfiles = localProfiles + (entry.packageName to next)
+                    saveProfile(next)
+                },
+                setMessages = { enabled ->
+                    val next = profile.copy(allowMessages = enabled)
+                    localProfiles = localProfiles + (entry.packageName to next)
+                    saveProfile(next)
+                },
+                setActions = { enabled ->
+                    val next = profile.copy(allowContextActions = enabled)
+                    localProfiles = localProfiles + (entry.packageName to next)
+                    saveProfile(next)
+                },
+                setInspect = { enabled -> update { it.copy(excludedScreenApps = if (enabled) it.excludedScreenApps - entry.packageName else it.excludedScreenApps + entry.packageName) } },
+                setWellbeing = { enabled -> update { it.copy(excludedWellbeingApps = if (enabled) it.excludedWellbeingApps - entry.packageName else it.excludedWellbeingApps + entry.packageName) } },
+            )
+        }
+    }
+}
+
+@Composable private fun PrivacyLine(label: String, value: String) = Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Text(label, color = MutedInk, modifier = Modifier.weight(1f))
+    Text(value, color = if (value == "NEVER" || value == "OFF") AmberDeep else Aubergine, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+}
+
+@Composable private fun AppPolicyCard(
+    entry: InstalledAppEntry,
+    profile: AppProfile,
+    inspect: Boolean,
+    wellbeing: Boolean,
+    cycleMode: () -> Unit,
+    setMessages: (Boolean) -> Unit,
+    setActions: (Boolean) -> Unit,
+    setInspect: (Boolean) -> Unit,
+    setWellbeing: (Boolean) -> Unit,
+) = PremiumCard {
+    SettingRow(entry.label, entry.packageName) { Text("›", color = Aubergine, fontSize = 22.sp, modifier = Modifier.clickable(onClick = cycleMode)) }
+    Spacer(Modifier.height(8.dp))
+    SettingRow("Companion mode", profile.displayMode.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase)) { Text("Change", color = Aubergine, fontSize = 12.sp, modifier = Modifier.clickable(onClick = cycleMode).padding(8.dp)) }
+    SettingRow("Messages", if (profile.allowMessages) "Allowed" else "Quiet") { Switch(profile.allowMessages, setMessages, colors = premiumSwitchColors()) }
+    SettingRow("Screen actions", if (profile.allowContextActions) "Allowed" else "Hidden") { Switch(profile.allowContextActions, setActions, colors = premiumSwitchColors()) }
+    SettingRow("Screen inspection", if (inspect) "Allowed" else "Never inspect") { Switch(inspect, setInspect, colors = premiumSwitchColors()) }
+    SettingRow("Wellbeing", if (wellbeing) "Included" else "Excluded") { Switch(wellbeing, setWellbeing, colors = premiumSwitchColors()) }
 }
 
 @Composable private fun Preview(settings: UserSettings, preview: (CompanionState) -> Unit, navigate: (AppScreen) -> Unit) {
@@ -377,6 +542,25 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
     val debug = CompanionOverlayService.debugSnapshot()
     item { PremiumCard { Text("Current AmbientContext", color = Ink, fontWeight = FontWeight.SemiBold); Text("Environment: ${snapshot?.context?.weather ?: "unknown"} · ${snapshot?.context?.timePeriod ?: "unknown"}", color = MutedInk); Text("Renderer: ${debug?.renderer ?: settings.companionAppearance} · Resource: ${debug?.resourceMode ?: settings.resourceMode}", color = MutedInk); Text("Personality: ${settings.personality} · Pack: ${settings.messagePack}", color = MutedInk) } }
     item { PremiumCard { Text("Rule resolution", color = Ink, fontWeight = FontWeight.SemiBold); Text("Winner: ${debug?.winningRule ?: "overlay unavailable"}", color = MutedInk); Text("Active: ${debug?.activeRules?.joinToString().orEmpty().ifBlank { "none" }}", color = MutedInk); Text("Queue: ${debug?.queuedEvents?.joinToString().orEmpty().ifBlank { "empty" }}", color = MutedInk); Text("Animation: ${debug?.animation ?: "paused"} · Accessory: ${debug?.accessory ?: "none"}", color = MutedInk) } }
+    item { PremiumCard {
+        val screen = debug?.screenContext ?: ScreenContext.EMPTY
+        Text("Screen context", color = Ink, fontWeight = FontWeight.SemiBold)
+        Text("Package: ${screen.packageName ?: "unavailable"}", color = MutedInk)
+        Text("${screen.appCategory} · ${screen.screenType} · ${screen.confidence}", color = MutedInk)
+        Text("Keyboard: ${screen.isKeyboardVisible} · Focused: ${screen.hasFocusedInput} · Scrollable: ${screen.isScrollable}", color = MutedInk)
+        Text("Fullscreen: ${screen.isFullScreen} · Sensitive: ${screen.isSensitive}", color = MutedInk)
+        Text("Avoid bounds: ${screen.importantBounds.size} · Actions: ${screen.availableActions.joinToString()}", color = MutedInk)
+    } }
+    item { PremiumCard {
+        val wellbeing = debug?.wellbeingContext ?: com.ambientcompanion.domain.wellbeing.WellbeingContext.EMPTY
+        Text("Wellbeing context", color = Ink, fontWeight = FontWeight.SemiBold)
+        Text("Session: ${wellbeing.sessionState} · Foreground: ${wellbeing.currentSessionDurationMs / 60_000} min", color = MutedInk)
+        Text("Active: ${wellbeing.activeSessionDurationMs / 60_000} min · Idle: ${wellbeing.idleDurationMs / 1_000}s", color = MutedInk)
+        Text("Scroll: ${wellbeing.continuousScrollDurationMs / 60_000} min · ${wellbeing.scrollEventCount} events", color = MutedInk)
+        Text("Opens today: ${wellbeing.appOpenCountToday} · Active today: ${wellbeing.appActiveMinutesToday} min", color = MutedInk)
+        Text("Last reaction: ${debug?.lastWellbeingReaction ?: "none"}", color = MutedInk)
+        Text(debug?.attentionExplanation ?: "Attention engine unavailable", color = AmberDeep)
+    } }
     item { Text("Force any state without waiting for real conditions.", color = MutedInk) }
     items(CompanionState.entries) { state -> ActionCard(state.displayName(), "Force state") { preview(state) } }
 }
