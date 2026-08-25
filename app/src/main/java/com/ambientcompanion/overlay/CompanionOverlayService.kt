@@ -92,11 +92,23 @@ class CompanionOverlayService : AccessibilityService() {
     private var currentState = CompanionState.DAY_CLEAR
     private var previewUntil = 0L
     private var receiverRegistered = false
+    private var screenActive = true
     private val systemReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                Intent.ACTION_SCREEN_OFF -> { animationStateMachine.pause(); renderer?.pause() }
-                Intent.ACTION_SCREEN_ON -> { animationStateMachine.resume(); renderer?.resume(); refreshContext() }
+                Intent.ACTION_SCREEN_OFF -> {
+                    screenActive = false
+                    eventQueue.clear()
+                    eventInFlight = false
+                    animationStateMachine.pause()
+                    renderer?.pause()
+                }
+                Intent.ACTION_SCREEN_ON -> {
+                    screenActive = true
+                    animationStateMachine.resume()
+                    renderer?.resume()
+                    refreshContext()
+                }
                 Intent.ACTION_CONFIGURATION_CHANGED -> { clampToScreen(); refreshContext() }
                 Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED -> refreshContext()
                 ACTION_CONTEXT_UPDATED -> refreshContext(true)
@@ -231,7 +243,7 @@ class CompanionOverlayService : AccessibilityService() {
             val previous = lastDeviceContext
             lastDeviceContext = device
             if (previous != null) enqueueDeviceEvents(previous, device)
-            if (companionView != null) refreshContext()
+            if (companionView != null && screenActive) refreshContext()
         }
     }
 
@@ -287,6 +299,7 @@ class CompanionOverlayService : AccessibilityService() {
     }
 
     private fun enqueueDeviceEvents(old: com.ambientcompanion.domain.context.DeviceContext, new: com.ambientcompanion.domain.context.DeviceContext) {
+        if (!screenActive) return
         fun offer(type: CompanionEventType, cooldown: Long, priority: Int = 40) {
             if (eventCooldowns.allow(type, cooldown)) eventQueue.offer(CompanionEvent(type, System.currentTimeMillis(), priority))
         }

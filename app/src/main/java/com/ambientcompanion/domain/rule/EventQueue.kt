@@ -14,6 +14,7 @@ class EventQueue(private val capacity: Int = 3, private val now: () -> Long = Sy
     }
     fun poll(): CompanionEvent? { purge(); return if (events.isEmpty()) null else events.removeAt(0) }
     fun snapshot(): List<CompanionEvent> { purge(); return events.toList() }
+    fun clear() = events.clear()
     private fun purge() { events.removeAll { now() - it.createdAt > it.ttlMs } }
 }
 

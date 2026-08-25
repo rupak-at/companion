@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.graphics.RectF
 import android.view.View
 import android.view.animation.OvershootInterpolator
 import com.ambientcompanion.data.preferences.CompanionAppearance
@@ -27,6 +28,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     private var theme: String = "default"
     private val mascot = BitmapFactory.decodeResource(resources, R.drawable.companion_mascot)
     private val mascotPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val mascotBounds = RectF()
     private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val facePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(58, 46, 56)
@@ -56,6 +58,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
+        mascotBounds.set(0f, 0f, width.toFloat(), height.toFloat())
         updateShader(width, height)
     }
 
@@ -86,7 +89,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         val cy = height / 2f
         val radius = minOf(width, height) * 0.37f
         mascotPaint.colorFilter = stateTint(state)
-        canvas.drawBitmap(mascot, null, android.graphics.RectF(0f, 0f, width.toFloat(), height.toFloat()), mascotPaint)
+        canvas.drawBitmap(mascot, null, mascotBounds, mascotPaint)
         drawAccessory(canvas, cx, cy, radius)
     }
 

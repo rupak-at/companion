@@ -68,4 +68,11 @@ class RuleEngineTest {
         now += 30_000L
         assertTrue(cooldowns.allow(CompanionEventType.HEADPHONES_CONNECTED, 30_000L))
     }
+
+    @Test fun `clearing queue drops events collected before suspension`() {
+        val queue = EventQueue(3) { 1_000L }
+        queue.offer(CompanionEvent(CompanionEventType.CHARGING_STARTED, 1_000L))
+        queue.clear()
+        assertTrue(queue.snapshot().isEmpty())
+    }
 }
