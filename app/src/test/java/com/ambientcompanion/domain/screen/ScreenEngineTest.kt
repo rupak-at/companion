@@ -30,6 +30,15 @@ class ScreenEngineTest {
         assertFalse(ScreenAction.SCREENSHOT in actions)
     }
 
+    @Test fun `user override cannot disable password protection`() {
+        val profile = AppProfile("login", CompanionDisplayMode.NORMAL, sensitiveOverride = false)
+        val sensitive = SensitiveScreenDetector().detect(
+            SanitizedScreenSnapshot(passwordFieldCount = 1), AppCategory.OTHER, profile,
+        )
+        assertTrue(sensitive.isSensitive)
+        assertTrue(SensitiveReason.PASSWORD_FIELD in sensitive.reasons)
+    }
+
     @Test fun `obstruction resolver moves away from focused input and preserves preferred side`() {
         val result = ObstructionResolver().resolve(
             current = ScreenBounds(900, 1400, 1000, 1500),

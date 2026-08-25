@@ -152,6 +152,7 @@ class CompanionOverlayService : AccessibilityService() {
                 Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED -> refreshContext()
                 ACTION_CONTEXT_UPDATED -> refreshContext(true)
                 ACTION_SETTINGS_UPDATED -> syncVisibility()
+                ACTION_CLEAR_ACTIVITY_DATA -> clearActivityData()
                 ACTION_HIDE -> hideCompanion(true)
                 ACTION_RESET_POSITION -> resetPosition()
                 ACTION_PREVIEW -> intent.getStringExtra(EXTRA_STATE)?.let(::previewState)
@@ -205,10 +206,15 @@ class CompanionOverlayService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         val previousPackage = foregroundPackage
-        foregroundPackage = event.packageName?.toString() ?: foregroundPackage
+        if (foregroundPackage == null || event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ) {
+            foregroundPackage = event.packageName?.toString() ?: foregroundPackage
+        }
         trackWellbeingEvent(event, previousPackage)
         if (!settings.screenAwarenessEnabled || foregroundPackage in settings.excludedScreenApps) {
             app.screenContextSource.clear()
+            currentScreenContext = ScreenContext.EMPTY
             return
         }
         val level = accessibilityEventProcessor.refreshLevel(event.eventType) ?: return
@@ -226,6 +232,18 @@ class CompanionOverlayService : AccessibilityService() {
         val stored = app.wellbeingRepository.load(today)
         appOpenTracker.restore(today, stored.appOpenCounts)
         dailyActiveMs.putAll(stored.activeMinutes.mapValues { it.value * 60_000L })
+    }
+
+    private fun clearActivityData() {
+        app.wellbeingRepository.clear()
+        sessionTracker.reset()
+        scrollTracker.reset()
+        appOpenTracker.clear()
+        dailyActiveMs.clear()
+        recordedSessionActiveMs = 0L
+        wellbeingContext = WellbeingContext.EMPTY
+        lastWellbeingReaction = null
+        attentionExplanation = "Local V3 activity data cleared"
     }
 
     private fun trackWellbeingEvent(event: AccessibilityEvent, previousPackage: String?) {
@@ -352,7 +370,7 @@ class CompanionOverlayService : AccessibilityService() {
             screenWidth = screen.x,
             screenHeight = screen.y,
             keyboardVisible = keyboardVisible,
-            fullScreen = isLikelyFullscreen(root, screen),
+            fullScreen = isLikelyFullscreen(root),
             secureWindow = root == null && foregroundPackage != null,
         )
         currentScreenContext = app.screenContextSource.update(snapshot, settings.sensitiveScreenModeEnabled)
@@ -360,11 +378,20 @@ class CompanionOverlayService : AccessibilityService() {
         pendingScreenRefresh = ContextRefreshLevel.LIGHT
     }
 
-    private fun isLikelyFullscreen(root: android.view.accessibility.AccessibilityNodeInfo?, screen: Point): Boolean {
+    private fun isLikelyFullscreen(root: android.view.accessibility.AccessibilityNodeInfo?): Boolean {
         root ?: return false
-        val bounds = android.graphics.Rect().also(root::getBoundsInScreen)
-        return bounds.left <= 0 && bounds.top <= 0 && bounds.right >= screen.x && bounds.bottom >= screen.y &&
-            windows.none { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+        if (windows.any { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }) return false
+        val view = companionView ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val insets = view.rootWindowInsets ?: return false
+            !insets.isVisible(android.view.WindowInsets.Type.statusBars()) ||
+                !insets.isVisible(android.view.WindowInsets.Type.navigationBars())
+        } else {
+            @Suppress("DEPRECATION")
+            val flags = view.systemUiVisibility
+            @Suppress("DEPRECATION")
+            flags and (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION) != 0
+        }
     }
 
     private fun applyScreenBehavior(context: ScreenContext) {
@@ -472,6 +499,7 @@ class CompanionOverlayService : AccessibilityService() {
             addAction(Intent.ACTION_TIMEZONE_CHANGED)
             addAction(ACTION_CONTEXT_UPDATED)
             addAction(ACTION_SETTINGS_UPDATED)
+            addAction(ACTION_CLEAR_ACTIVITY_DATA)
         }
         ContextCompat.registerReceiver(this, systemReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         receiverRegistered = true
@@ -494,6 +522,7 @@ class CompanionOverlayService : AccessibilityService() {
             companionView?.setTheme(settings.theme)
             val snapshot = app.contextRepository.refresh(force)
             if (android.os.SystemClock.uptimeMillis() >= previewUntil) applyAmbientContext(snapshot.context)
+            if (settings.screenAwarenessEnabled) applyScreenBehavior(currentScreenContext)
         }
     }
 
@@ -1011,11 +1040,8 @@ class CompanionOverlayService : AccessibilityService() {
     private fun performNodeAction(action: Int, repeat: Boolean) {
         val root = rootInActiveWindow ?: return
         val target = findNode(root) { it.isScrollable && it.actionList.any { info -> info.id == action } } ?: return
-        fun run(remaining: Int) {
-            if (!target.performAction(action) || !repeat || remaining <= 1) return
-            handler.postDelayed({ run(remaining - 1) }, 60L)
-        }
-        run(16)
+        var remaining = if (repeat) 16 else 1
+        while (remaining-- > 0 && target.performAction(action)) Unit
     }
 
     private fun focusAdjacent(direction: Int) {
@@ -1111,6 +1137,7 @@ class CompanionOverlayService : AccessibilityService() {
         const val ACTION_PREVIEW = "com.ambientcompanion.action.PREVIEW"
         const val ACTION_CONTEXT_UPDATED = "com.ambientcompanion.action.CONTEXT_UPDATED"
         const val ACTION_SETTINGS_UPDATED = "com.ambientcompanion.action.SETTINGS_UPDATED"
+        const val ACTION_CLEAR_ACTIVITY_DATA = "com.ambientcompanion.action.CLEAR_ACTIVITY_DATA"
         const val EXTRA_STATE = "companion_state"
         const val ACTION_HIDE = "com.ambientcompanion.action.HIDE"
         const val ACTION_RESET_POSITION = "com.ambientcompanion.action.RESET_POSITION"

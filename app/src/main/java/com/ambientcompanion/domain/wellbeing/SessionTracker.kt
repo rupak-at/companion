@@ -54,6 +54,16 @@ class SessionTracker(private val idleThresholdMs: Long = 3 * 60_000L) {
         )
     }
 
+    fun reset() {
+        packageName = null
+        sessionStartedAt = 0
+        lastUpdateAt = 0
+        lastInteractionAt = 0
+        activeDurationMs = 0
+        screenOn = false
+        state = SessionState.ENDED
+    }
+
     private fun advance(now: Long) {
         if (lastUpdateAt == 0L) { lastUpdateAt = now; return }
         val end = minOf(now, lastInteractionAt + idleThresholdMs)

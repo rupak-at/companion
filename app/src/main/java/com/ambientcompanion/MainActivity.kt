@@ -63,13 +63,14 @@ class MainActivity : ComponentActivity() {
             }
         }
         refreshContext()
+        val launchableApps = installedApps()
         setContent {
             AmbientApp(
                 settings = settingsState.value,
                 settingsLoaded = settingsLoadedState.value,
                 snapshot = snapshotState.value,
                 screenContext = screenContextState.value,
-                installedApps = installedApps(),
+                installedApps = launchableApps,
                 screen = screenState.value,
                 hasAccessibilityPermission = accessibilityEnabledState.value,
                 overlayRunning = CompanionOverlayService.isRunning,
@@ -89,7 +90,10 @@ class MainActivity : ComponentActivity() {
                     app.appProfileRepository.save(profile)
                     sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
                 },
-                onClearActivityData = { app.wellbeingRepository.clear() },
+                onClearActivityData = {
+                    app.wellbeingRepository.clear()
+                    sendBroadcast(Intent(CompanionOverlayService.ACTION_CLEAR_ACTIVITY_DATA).setPackage(packageName))
+                },
                 onPreviewState = { state ->
                     sendBroadcast(Intent(CompanionOverlayService.ACTION_PREVIEW).setPackage(packageName).apply {
                         action = CompanionOverlayService.ACTION_PREVIEW

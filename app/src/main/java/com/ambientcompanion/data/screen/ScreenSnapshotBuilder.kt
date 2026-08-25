@@ -52,7 +52,7 @@ class ScreenSnapshotBuilder(private val maxNodes: Int = 500) {
         var hasFocusedInput = false
         var hasSubmit = false
         var hasSearch = false
-        var hasMessageList = false
+        var hasMessageContainer = false
         var hasGrid = false
         var hasDialog = false
         var hasLargeMedia = false
@@ -78,7 +78,7 @@ class ScreenSnapshotBuilder(private val maxNodes: Int = 500) {
             }
             if (button && SUBMIT_WORDS.any(transientLabels::contains)) hasSubmit = true
             if (editable && SEARCH_WORDS.any(transientLabels::contains)) hasSearch = true
-            if (className.contains("recyclerview") && editableCount > 0) hasMessageList = true
+            if (className.contains("recyclerview") || className.contains("listview")) hasMessageContainer = true
             if (className.contains("grid")) hasGrid = true
             if (className.contains("dialog")) hasDialog = true
             val bounds = node.bounds()
@@ -103,7 +103,7 @@ class ScreenSnapshotBuilder(private val maxNodes: Int = 500) {
                 hasFocusedInput = hasFocusedInput,
                 hasSubmitLikeControl = hasSubmit,
                 hasSearchLikeInput = hasSearch,
-                hasMessageListStructure = hasMessageList && editableCount > 0,
+                hasMessageListStructure = hasMessageContainer && editableCount > 0,
                 hasSettingsStructure = packageName?.contains("settings", ignoreCase = true) == true,
                 hasGridStructure = hasGrid,
                 hasDialogLikeStructure = hasDialog,
