@@ -1,6 +1,7 @@
 package com.ambientcompanion.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +20,8 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,6 +31,9 @@ import com.ambientcompanion.data.preferences.AppPreferences
 import com.ambientcompanion.data.preferences.UserSettings
 import com.ambientcompanion.domain.model.CompanionState
 import com.ambientcompanion.domain.repository.ContextSnapshot
+import com.ambientcompanion.R
+import com.ambientcompanion.domain.context.Personality
+import com.ambientcompanion.domain.context.ResourceMode
 import kotlin.math.roundToInt
 
 enum class AppScreen { HOME, CUSTOMIZE, SETTINGS, PREVIEW, DEBUG }
@@ -229,6 +235,19 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         item { ToggleCard("Automatic messages", "At most once each hour", settings.automaticMessages) { value -> update { it.copy(automaticMessages = value) } } }
         item { ToggleCard("Weather context", "Use local conditions when available", settings.weatherEnabled) { value -> update { it.copy(weatherEnabled = value) } } }
         item { ToggleCard("Reduced motion", "Prefer gentle fades", settings.reducedMotion) { value -> update { it.copy(reducedMotion = value) } } }
+        item { ActionCard("Personality", settings.personality.name.lowercase().replaceFirstChar(Char::uppercase)) { update { it.copy(personality = Personality.entries[(it.personality.ordinal + 1) % Personality.entries.size]) } } }
+        item { ActionCard("Message pack", settings.messagePack.replaceFirstChar(Char::uppercase)) { update { val packs = listOf("default", "minimal", "motivational", "cute", "funny"); it.copy(messagePack = packs[(packs.indexOf(it.messagePack) + 1).mod(packs.size)]) } } }
+        item { ActionCard("Theme", settings.theme.replaceFirstChar(Char::uppercase)) { update { val themes = listOf("default", "night glow", "warm sunset", "cloud", "mono"); it.copy(theme = themes[(themes.indexOf(it.theme) + 1).mod(themes.size)]) } } }
+        item { ActionCard("Resource mode", settings.resourceMode.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase)) { update { it.copy(resourceMode = ResourceMode.entries[(it.resourceMode.ordinal + 1) % ResourceMode.entries.size]) } } }
+        item { SectionLabel("DEVICE CONTEXT") }
+        item { ToggleCard("Battery reactions", "Low, critical and full states", settings.batteryReactions) { value -> update { it.copy(batteryReactions = value) } } }
+        item { ToggleCard("Charging reactions", "React when power connects", settings.chargingReactions) { value -> update { it.copy(chargingReactions = value) } } }
+        item { ToggleCard("Headphone reactions", "Wired, USB and Bluetooth output", settings.headphoneReactions) { value -> update { it.copy(headphoneReactions = value) } } }
+        item { ToggleCard("Connectivity reactions", "Off by default to stay quiet", settings.connectivityReactions) { value -> update { it.copy(connectivityReactions = value) } } }
+        item { ToggleCard("Weekend reactions", settings.weekendDays.joinToString { it.name.take(3) }, settings.weekendReactions) { value -> update { it.copy(weekendReactions = value) } } }
+        item { SectionLabel("SCHEDULE") }
+        item { ToggleCard("Quiet hours", "10:30 PM–7:00 AM", settings.quietHoursEnabled) { value -> update { it.copy(quietHoursEnabled = value) } } }
+        item { ToggleCard("Active hours", "7:00 AM–11:00 PM", settings.activeHoursEnabled) { value -> update { it.copy(activeHoursEnabled = value) } } }
         item { ActionCard("Assistive controls", "Enable Back, Home, Recents and system actions") { openAccessibilitySettings() } }
         item { SectionLabel("COMPANION") }
         item { ActionCard("Appearance", if (settings.companionAppearance == CompanionAppearance.EMOJI) "Emoji · ${settings.selectedEmoji}" else "Ambient mascot") { update { it.copy(companionAppearance = if (it.companionAppearance == CompanionAppearance.AMBIENT) CompanionAppearance.EMOJI else CompanionAppearance.AMBIENT) } } }
@@ -265,7 +284,7 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
 }
 @Composable private fun PremiumBackground(content: @Composable BoxScope.() -> Unit) = Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Porcelain, Color(0xFFFFFDF9))))) { Canvas(Modifier.size(280.dp).align(Alignment.TopEnd).blur(48.dp)) { drawCircle(Color(0x22FFB86B), size.minDimension * .46f) }; content() }
 @Composable private fun BrandMark() = Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(28.dp).background(Aubergine, CircleShape), contentAlignment = Alignment.Center) { Text("•ᴗ•", color = Amber, fontSize = 10.sp, fontWeight = FontWeight.Bold) }; Text("  AMBIENT", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp) }
-@Composable private fun Mascot(state: CompanionState, size: Int, emoji: String? = null) { val colors = stateColors(state); if (emoji != null) { Box(Modifier.size(size.dp), contentAlignment = Alignment.Center) { Text(emoji, fontSize = (size * .58f).sp) } } else { Box(Modifier.size(size.dp).shadow(22.dp, CircleShape, ambientColor = colors.last().copy(alpha = .3f)).background(Brush.radialGradient(colors), CircleShape), contentAlignment = Alignment.Center) { Text(faceFor(state), color = Ink, fontSize = (size * .17f).sp, fontWeight = FontWeight.Bold) } } }
+@Composable private fun Mascot(state: CompanionState, size: Int, emoji: String? = null) { if (emoji != null) { Box(Modifier.size(size.dp), contentAlignment = Alignment.Center) { Text(emoji, fontSize = (size * .58f).sp) } } else { Image(painterResource(R.drawable.companion_mascot), "Ambient Companion", Modifier.size(size.dp), contentScale = ContentScale.Fit) } }
 @Composable private fun PremiumCard(content: @Composable ColumnScope.() -> Unit) = Surface(color = Color.White.copy(alpha = .9f), shape = RoundedCornerShape(28.dp), shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(22.dp), content = content) }
 @Composable private fun SettingRow(title: String, subtitle: String, control: @Composable () -> Unit) = Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, color = Ink, fontWeight = FontWeight.SemiBold); Text(subtitle, color = MutedInk, fontSize = 13.sp) }; control() }
 @Composable private fun ToggleCard(title: String, subtitle: String, checked: Boolean, change: (Boolean) -> Unit) = PremiumCard { SettingRow(title, subtitle) { Switch(checked, change, colors = premiumSwitchColors()) } }
