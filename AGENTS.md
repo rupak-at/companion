@@ -20,8 +20,6 @@ These rules apply to every automated agent working in this repository.
 
 ## Protected local files
 
-- `ambient_companion_v1.md` is a local product brief. It must remain ignored and must
-  never be staged or committed.
 - Never use `git add -f` to bypass ignore rules for protected files.
 - Never commit credentials, signing keys, API secrets, machine-specific SDK paths, or
   generated build output.
