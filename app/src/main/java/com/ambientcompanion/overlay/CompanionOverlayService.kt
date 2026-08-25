@@ -30,6 +30,16 @@ import com.ambientcompanion.AmbientApplication
 import com.ambientcompanion.data.preferences.UserSettings
 import com.ambientcompanion.accessibility.AssistiveAction
 import com.ambientcompanion.domain.engine.MessageSelector
+import com.ambientcompanion.domain.context.AmbientContext
+import com.ambientcompanion.domain.context.CompanionPreferences
+import com.ambientcompanion.domain.context.BatteryState
+import com.ambientcompanion.domain.rule.RuleEngine
+import com.ambientcompanion.domain.rule.CompanionEvent
+import com.ambientcompanion.domain.rule.CompanionEventType
+import com.ambientcompanion.domain.rule.EventCooldowns
+import com.ambientcompanion.domain.rule.EventQueue
+import com.ambientcompanion.domain.schedule.SchedulePolicy
+import com.ambientcompanion.renderer.AnimationId
 import com.ambientcompanion.domain.model.CompanionState
 import com.ambientcompanion.screenshot.ScreenshotPermissionActivity
 import kotlin.math.abs
@@ -39,6 +49,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
+import java.time.LocalTime
 
 class CompanionOverlayService : AccessibilityService() {
     private lateinit var windowManager: WindowManager
@@ -50,6 +62,10 @@ class CompanionOverlayService : AccessibilityService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val app by lazy { application as AmbientApplication }
     private val messageSelector = MessageSelector()
+    private val ruleEngine = RuleEngine()
+    private val eventQueue = EventQueue()
+    private val eventCooldowns = EventCooldowns()
+    private var lastDeviceContext: com.ambientcompanion.domain.context.DeviceContext? = null
     private var settings = UserSettings()
     private var currentState = CompanionState.DAY_CLEAR
     private var previewUntil = 0L
@@ -74,6 +90,7 @@ class CompanionOverlayService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         registerSystemReceiver()
+        observeDeviceContext()
         syncVisibility()
     }
 
@@ -87,7 +104,7 @@ class CompanionOverlayService : AccessibilityService() {
 
     private fun syncVisibility() = serviceScope.launch {
         settings = app.preferences.currentSettings()
-        if (settings.companionEnabled) {
+        if (settings.companionEnabled && settings.hiddenUntil <= System.currentTimeMillis()) {
             if (companionView == null) showCompanion()
             refreshContext()
         } else hideCompanion()
@@ -166,9 +183,73 @@ class CompanionOverlayService : AccessibilityService() {
                 settings.reducedMotion,
             )
             val snapshot = app.contextRepository.refresh(force)
-            if (android.os.SystemClock.uptimeMillis() >= previewUntil) applyState(snapshot.state)
-            maybeShowAutomaticMessage(snapshot.state)
+            if (android.os.SystemClock.uptimeMillis() >= previewUntil) applyAmbientContext(snapshot.context)
         }
+    }
+
+    private fun observeDeviceContext() = serviceScope.launch {
+        app.deviceContextSource.state.collectLatest { device ->
+            val previous = lastDeviceContext
+            lastDeviceContext = device
+            if (previous != null) enqueueDeviceEvents(previous, device)
+            if (companionView != null) refreshContext()
+        }
+    }
+
+    private suspend fun applyAmbientContext(environment: com.ambientcompanion.domain.model.CompanionContext) {
+        val now = LocalTime.now()
+        val quiet = settings.quietHoursEnabled && SchedulePolicy.contains(now, settings.quietStartMinutes, settings.quietEndMinutes)
+        val outsideActive = settings.activeHoursEnabled && !SchedulePolicy.contains(now, settings.activeStartMinutes, settings.activeEndMinutes)
+        val device = app.deviceContextSource.state.value.copy(
+            isWeekend = SchedulePolicy.isWeekend(app.deviceContextSource.state.value.dayOfWeek, settings.weekendDays),
+        )
+        val context = AmbientContext(environment, device, CompanionPreferences(
+            personality = settings.personality,
+            quietHoursActive = quiet,
+            outsideActiveHours = outsideActive,
+            connectivityReactions = settings.connectivityReactions,
+            headphoneReactions = settings.headphoneReactions,
+            batteryReactions = settings.batteryReactions,
+            chargingReactions = settings.chargingReactions,
+            weekendReactions = settings.weekendReactions,
+            resourceMode = settings.resourceMode,
+        ))
+        val resolved = ruleEngine.resolve(context)
+        currentState = resolved.behavior.visualState
+        companionView?.apply {
+            applyState(currentState, settings.reducedMotion || device.isPowerSaveMode)
+            setAccessory(resolved.behavior.accessory)
+        }
+        val event = eventQueue.poll()
+        if (event != null && !quiet) playEvent(event)
+        else if (resolved.behavior.automaticMessageAllowed) maybeShowAutomaticMessage(currentState)
+    }
+
+    private fun enqueueDeviceEvents(old: com.ambientcompanion.domain.context.DeviceContext, new: com.ambientcompanion.domain.context.DeviceContext) {
+        fun offer(type: CompanionEventType, cooldown: Long, priority: Int = 40) {
+            if (eventCooldowns.allow(type, cooldown)) eventQueue.offer(CompanionEvent(type, System.currentTimeMillis(), priority))
+        }
+        if (!old.isCharging && new.isCharging && settings.chargingReactions) offer(CompanionEventType.CHARGING_STARTED, 1_000, 90)
+        if (old.isCharging && !new.isCharging && settings.chargingReactions) offer(CompanionEventType.CHARGING_STOPPED, 1_000, 90)
+        if (!old.isBatteryFull && new.isBatteryFull && settings.batteryReactions) offer(CompanionEventType.BATTERY_FULL, 60_000, 95)
+        if (!old.isHeadphonesConnected && new.isHeadphonesConnected && settings.headphoneReactions) offer(CompanionEventType.HEADPHONES_CONNECTED, 30 * 60_000L)
+        if (old.networkState != new.networkState && settings.connectivityReactions) {
+            val type = if (new.networkState == com.ambientcompanion.domain.context.NetworkState.ONLINE) CompanionEventType.NETWORK_RESTORED else CompanionEventType.NETWORK_LOST
+            offer(type, 10 * 60_000L)
+        }
+    }
+
+    private fun playEvent(event: CompanionEvent) {
+        val (animation, message) = when (event.type) {
+            CompanionEventType.CHARGING_STARTED -> AnimationId.CHARGING to "Charging up!"
+            CompanionEventType.CHARGING_STOPPED -> AnimationId.STATE_TRANSITION to "Unplugged"
+            CompanionEventType.BATTERY_FULL -> AnimationId.BATTERY_FULL to "All full!"
+            CompanionEventType.HEADPHONES_CONNECTED -> AnimationId.HEADPHONES to "Music time?"
+            CompanionEventType.NETWORK_LOST -> AnimationId.NETWORK_LOST to "Lost connection?"
+            CompanionEventType.NETWORK_RESTORED -> AnimationId.NETWORK_RESTORED to "Back online!"
+        }
+        companionView?.play(animation)
+        if (settings.messagesEnabled) showMessage(message)
     }
 
     private fun applyState(state: CompanionState) {

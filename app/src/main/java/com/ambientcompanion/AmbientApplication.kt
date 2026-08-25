@@ -7,6 +7,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.ambientcompanion.data.location.LocationProvider
+import com.ambientcompanion.data.device.DeviceContextSource
 import com.ambientcompanion.data.preferences.AppPreferences
 import com.ambientcompanion.data.weather.WeatherApi
 import com.ambientcompanion.data.weather.WeatherRepository
@@ -25,10 +26,13 @@ class AmbientApplication : Application() {
         private set
     lateinit var contextRepository: ContextRepository
         private set
+    lateinit var deviceContextSource: DeviceContextSource
+        private set
 
     override fun onCreate() {
         super.onCreate()
         preferences = AppPreferences(this)
+        deviceContextSource = DeviceContextSource(this).also { it.start() }
         val client = OkHttpClient.Builder()
             .addInterceptor(HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BASIC))
             .build()
