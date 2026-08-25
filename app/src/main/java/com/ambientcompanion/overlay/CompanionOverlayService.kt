@@ -56,6 +56,10 @@ import com.ambientcompanion.screenshot.ScreenshotPermissionActivity
 import com.ambientcompanion.data.screen.AccessibilityEventProcessor
 import com.ambientcompanion.data.screen.ContextRefreshLevel
 import com.ambientcompanion.data.screen.ScreenSnapshotBuilder
+import com.ambientcompanion.domain.screen.CompanionDisplayMode
+import com.ambientcompanion.domain.screen.ScreenAction
+import com.ambientcompanion.domain.screen.ScreenBounds
+import com.ambientcompanion.domain.screen.ScreenContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
@@ -86,8 +90,13 @@ class CompanionOverlayService : AccessibilityService() {
     private val batteryStateTracker = BatteryStateTracker()
     private val accessibilityEventProcessor = AccessibilityEventProcessor()
     private val screenSnapshotBuilder = ScreenSnapshotBuilder()
+    private val smartPositionController = SmartPositionController()
     private var pendingScreenRefresh = ContextRefreshLevel.FULL
     private var foregroundPackage: String? = null
+    private var currentScreenContext = ScreenContext.EMPTY
+    private var smartPositionActive = false
+    private var positionBeforeSmartMove: Pair<Int, Int>? = null
+    private var screenQuietUntil = 0L
     private val screenContextRefresh = Runnable { rebuildScreenContext() }
     private var lastDeviceContext: com.ambientcompanion.domain.context.DeviceContext? = null
     private var lastBatteryState: BatteryState? = null
@@ -214,7 +223,8 @@ class CompanionOverlayService : AccessibilityService() {
             fullScreen = isLikelyFullscreen(root, screen),
             secureWindow = root == null && foregroundPackage != null,
         )
-        app.screenContextSource.update(snapshot, settings.sensitiveScreenModeEnabled)
+        currentScreenContext = app.screenContextSource.update(snapshot, settings.sensitiveScreenModeEnabled)
+        applyScreenBehavior(currentScreenContext)
         pendingScreenRefresh = ContextRefreshLevel.LIGHT
     }
 
@@ -223,6 +233,71 @@ class CompanionOverlayService : AccessibilityService() {
         val bounds = android.graphics.Rect().also(root::getBoundsInScreen)
         return bounds.left <= 0 && bounds.top <= 0 && bounds.right >= screen.x && bounds.bottom >= screen.y &&
             windows.none { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+    }
+
+    private fun applyScreenBehavior(context: ScreenContext) {
+        val view = companionView ?: return
+        val params = layoutParams ?: return
+        val category = context.appCategory
+        val profile = context.packageName?.let { app.appProfileRepository.profileFor(it, category) }
+        val requestedMode = when {
+            context.isSensitive -> CompanionDisplayMode.PRIVACY
+            context.isFullScreen -> CompanionDisplayMode.EDGE_PEEK
+            else -> profile?.displayMode ?: CompanionDisplayMode.NORMAL
+        }
+        view.visibility = if (requestedMode == CompanionDisplayMode.HIDDEN) View.INVISIBLE else View.VISIBLE
+        if (requestedMode == CompanionDisplayMode.HIDDEN) return
+        val targetSize = when (requestedMode) {
+            CompanionDisplayMode.SMALL, CompanionDisplayMode.PRIVACY -> (settings.companionSizeDp * .72f).roundToInt()
+            else -> settings.companionSizeDp
+        }
+        resizeCompanion(targetSize)
+        view.alpha = when (requestedMode) {
+            CompanionDisplayMode.QUIET -> .58f
+            CompanionDisplayMode.EDGE_PEEK, CompanionDisplayMode.PRIVACY -> .52f
+            else -> settings.idleOpacity
+        }
+        if (requestedMode in setOf(CompanionDisplayMode.EDGE_PEEK, CompanionDisplayMode.PRIVACY)) {
+            val screen = screenSize()
+            val targetX = if (params.x + params.width / 2 < screen.x / 2) -params.width / 2 else screen.x - params.width / 2
+            animatePosition(targetX, params.y.coerceIn(0, (screen.y - params.height).coerceAtLeast(0)))
+            smartPositionActive = true
+            return
+        }
+        if (!settings.smartRepositioningEnabled) return
+        val screen = screenSize()
+        val resolution = smartPositionController.resolve(
+            ScreenBounds(params.x, params.y, params.x + params.width, params.y + params.height),
+            ScreenBounds(0, 0, screen.x, screen.y),
+            context,
+        )
+        if (resolution.moved) {
+            if (!smartPositionActive) positionBeforeSmartMove = params.x to params.y
+            smartPositionActive = true
+            animatePosition(resolution.x, resolution.y)
+        } else if (smartPositionActive) {
+            positionBeforeSmartMove?.let { animatePosition(it.first, it.second) }
+            smartPositionActive = false
+            positionBeforeSmartMove = null
+        }
+    }
+
+    private fun animatePosition(targetX: Int, targetY: Int) {
+        val view = companionView ?: return
+        val params = layoutParams ?: return
+        val startX = params.x
+        val startY = params.y
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 220L
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { animator ->
+                val fraction = animator.animatedValue as Float
+                params.x = (startX + (targetX - startX) * fraction).roundToInt()
+                params.y = (startY + (targetY - startY) * fraction).roundToInt()
+                runCatching { windowManager.updateViewLayout(view, params) }
+            }
+            start()
+        }
     }
 
     private fun showCompanion() {
@@ -470,7 +545,10 @@ class CompanionOverlayService : AccessibilityService() {
     }
 
     private suspend fun maybeShowAutomaticMessage(state: CompanionState) {
-        if (!settings.messagesEnabled || !settings.automaticMessages) return
+        val profile = currentScreenContext.packageName?.let { app.appProfileRepository.profileFor(it, currentScreenContext.appCategory) }
+        if (!settings.messagesEnabled || !settings.automaticMessages || currentScreenContext.isSensitive ||
+            System.currentTimeMillis() < screenQuietUntil || profile?.allowMessages == false
+        ) return
         val (lastId, lastAt) = app.preferences.lastMessage()
         if (System.currentTimeMillis() - lastAt < messageEngine.automaticIntervalMs(settings.personality)) return
         val selected = messageEngine.select(MessageRequest(state, settings.personality, settings.messagePackId(), lastId, millisSinceLastTap = 0))
@@ -571,6 +649,10 @@ class CompanionOverlayService : AccessibilityService() {
     }
 
     private fun requestScreenshot() {
+        if (currentScreenContext.isSensitive) {
+            showMessage("Screenshots are unavailable in Privacy Mode")
+            return
+        }
         showMessage("Preparing screenshot…")
         startActivity(
             Intent(this, ScreenshotPermissionActivity::class.java)
@@ -712,6 +794,13 @@ class CompanionOverlayService : AccessibilityService() {
             }
         }
 
+        val profile = currentScreenContext.packageName?.let { app.appProfileRepository.profileFor(it, currentScreenContext.appCategory) }
+        if (settings.screenAwarenessEnabled && settings.contextActionsEnabled && profile?.allowContextActions != false) {
+            currentScreenContext.availableActions.forEach { screenAction ->
+                action(screenAction.label()) { performScreenAction(screenAction) }
+            }
+        }
+
         action("Hide 15 minutes") { hideTemporarily(System.currentTimeMillis() + 15 * 60_000L) }
         action("Hide 1 hour") { hideTemporarily(System.currentTimeMillis() + 60 * 60_000L) }
         action("Until evening") { hideTemporarily(nextOccurrenceMillis(18 * 60)) }
@@ -742,6 +831,72 @@ class CompanionOverlayService : AccessibilityService() {
         windowManager.addView(menu, params)
         quickMenuView = menu
         handler.postDelayed(::dismissQuickMenu, 6_000)
+    }
+
+    private fun ScreenAction.label(): String = when (this) {
+        ScreenAction.SCROLL_TOP -> "Scroll to top"
+        ScreenAction.SCROLL_BOTTOM -> "Scroll to bottom"
+        ScreenAction.PREVIOUS_FIELD -> "Previous field"
+        ScreenAction.NEXT_FIELD -> "Next field"
+        ScreenAction.HIDE_KEYBOARD -> "Hide keyboard"
+        ScreenAction.QUIET_30_MINUTES -> "Quiet 30 minutes"
+        ScreenAction.EDGE_PEEK -> "Edge peek"
+        else -> name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase)
+    }
+
+    private fun performScreenAction(action: ScreenAction) {
+        when (action) {
+            ScreenAction.BACK -> perform(AssistiveAction.BACK)
+            ScreenAction.HOME -> perform(AssistiveAction.HOME)
+            ScreenAction.RECENTS -> perform(AssistiveAction.RECENTS)
+            ScreenAction.NOTIFICATIONS -> perform(AssistiveAction.NOTIFICATIONS)
+            ScreenAction.QUICK_SETTINGS -> perform(AssistiveAction.QUICK_SETTINGS)
+            ScreenAction.HIDE -> hideTemporarily(System.currentTimeMillis() + 15 * 60_000L)
+            ScreenAction.REFRESH -> { rebuildScreenContext(); refreshContext(true) }
+            ScreenAction.OPEN_APP -> startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            ScreenAction.SCREENSHOT -> requestScreenshot()
+            ScreenAction.HIDE_KEYBOARD -> if (currentScreenContext.isKeyboardVisible) perform(AssistiveAction.BACK)
+            ScreenAction.QUIET_30_MINUTES -> {
+                screenQuietUntil = System.currentTimeMillis() + 30 * 60_000L
+                showMessage("Quiet for 30 minutes")
+            }
+            ScreenAction.EDGE_PEEK -> applyScreenBehavior(currentScreenContext.copy(isFullScreen = true))
+            ScreenAction.SCROLL_TOP -> performNodeAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD, repeat = true)
+            ScreenAction.SCROLL_BOTTOM -> performNodeAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, repeat = true)
+            ScreenAction.PREVIOUS_FIELD -> focusAdjacent(android.view.View.FOCUS_BACKWARD)
+            ScreenAction.NEXT_FIELD -> focusAdjacent(android.view.View.FOCUS_FORWARD)
+        }
+    }
+
+    private fun performNodeAction(action: Int, repeat: Boolean) {
+        val root = rootInActiveWindow ?: return
+        val target = findNode(root) { it.isScrollable && it.actionList.any { info -> info.id == action } } ?: return
+        fun run(remaining: Int) {
+            if (!target.performAction(action) || !repeat || remaining <= 1) return
+            handler.postDelayed({ run(remaining - 1) }, 60L)
+        }
+        run(16)
+    }
+
+    private fun focusAdjacent(direction: Int) {
+        val root = rootInActiveWindow ?: return
+        val focused = root.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT) ?: return
+        focused.focusSearch(direction)?.takeIf { it.isEditable }?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
+    }
+
+    private fun findNode(
+        root: android.view.accessibility.AccessibilityNodeInfo,
+        predicate: (android.view.accessibility.AccessibilityNodeInfo) -> Boolean,
+    ): android.view.accessibility.AccessibilityNodeInfo? {
+        val queue = java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+        while (queue.isNotEmpty() && visited++ < 500) {
+            val node = queue.removeFirst()
+            if (predicate(node)) return node
+            for (index in 0 until node.childCount) node.getChild(index)?.let(queue::addLast)
+        }
+        return null
     }
 
     private fun hideTemporarily(until: Long) {
