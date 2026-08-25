@@ -12,6 +12,8 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.PowerManager
+import android.os.Handler
+import android.os.Looper
 import com.ambientcompanion.domain.context.AudioOutputType
 import com.ambientcompanion.domain.context.DeviceContext
 import com.ambientcompanion.domain.context.NetworkState
@@ -26,13 +28,15 @@ class DeviceContextSource(private val context: Context, private val weekendDays:
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
     private val audio = context.getSystemService(AudioManager::class.java)
     private val mutable = MutableStateFlow(snapshot())
+    private val handler = Handler(Looper.getMainLooper())
+    private val networkRefresh = Runnable(::refresh)
     val state: StateFlow<DeviceContext> = mutable
 
     private val batteryReceiver = object : BroadcastReceiver() { override fun onReceive(c: Context?, i: Intent?) { mutable.value = snapshot(i) } }
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) = refresh()
-        override fun onLost(network: Network) = refresh()
-        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = refresh()
+        override fun onAvailable(network: Network) = debounceNetwork()
+        override fun onLost(network: Network) = debounceNetwork()
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = debounceNetwork()
     }
     private val audioCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = refresh()
@@ -49,8 +53,10 @@ class DeviceContextSource(private val context: Context, private val weekendDays:
         runCatching { context.unregisterReceiver(batteryReceiver) }
         runCatching { connectivity.unregisterNetworkCallback(networkCallback) }
         runCatching { audio.unregisterAudioDeviceCallback(audioCallback) }
+        handler.removeCallbacks(networkRefresh)
     }
     fun refresh() { mutable.value = snapshot() }
+    private fun debounceNetwork() { handler.removeCallbacks(networkRefresh); handler.postDelayed(networkRefresh, 4_000) }
 
     private fun snapshot(intent: Intent? = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))): DeviceContext {
         val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1

@@ -18,8 +18,9 @@ data class DeviceContext(
     val audioOutputType: AudioOutputType = AudioOutputType.UNKNOWN,
     val dayOfWeek: DayOfWeek = DayOfWeek.MONDAY,
     val isWeekend: Boolean = false,
+    val classifiedBatteryState: BatteryState? = null,
 ) {
-    val batteryState: BatteryState get() = when {
+    val batteryState: BatteryState get() = classifiedBatteryState ?: when {
         isBatteryFull || batteryPercent >= 100 -> BatteryState.FULL
         batteryPercent <= 10 -> BatteryState.CRITICAL
         batteryPercent <= 20 -> BatteryState.LOW

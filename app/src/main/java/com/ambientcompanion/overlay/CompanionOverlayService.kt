@@ -35,6 +35,8 @@ import com.ambientcompanion.domain.message.MessageRequest
 import com.ambientcompanion.domain.context.AmbientContext
 import com.ambientcompanion.domain.context.CompanionPreferences
 import com.ambientcompanion.domain.context.BatteryState
+import com.ambientcompanion.domain.context.BatteryStateTracker
+import com.ambientcompanion.domain.context.ResourceMode
 import com.ambientcompanion.domain.rule.RuleEngine
 import com.ambientcompanion.domain.rule.CompanionEvent
 import com.ambientcompanion.domain.rule.CompanionEventType
@@ -67,6 +69,7 @@ class CompanionOverlayService : AccessibilityService() {
     private val ruleEngine = RuleEngine()
     private val eventQueue = EventQueue()
     private val eventCooldowns = EventCooldowns()
+    private val batteryStateTracker = BatteryStateTracker()
     private var lastDeviceContext: com.ambientcompanion.domain.context.DeviceContext? = null
     private var settings = UserSettings()
     private var currentState = CompanionState.DAY_CLEAR
@@ -178,11 +181,12 @@ class CompanionOverlayService : AccessibilityService() {
         serviceScope.launch {
             settings = app.preferences.currentSettings()
             resizeCompanion(settings.companionSizeDp)
+            val device = app.deviceContextSource.state.value
             companionView?.configureAppearance(
-                settings.companionAppearance,
+                if (settings.resourceMode == ResourceMode.MINIMAL) com.ambientcompanion.data.preferences.CompanionAppearance.EMOJI else settings.companionAppearance,
                 settings.selectedEmoji,
                 settings.idleOpacity,
-                settings.reducedMotion,
+                settings.reducedMotion || device.isPowerSaveMode || settings.resourceMode != ResourceMode.NORMAL,
             )
             val snapshot = app.contextRepository.refresh(force)
             if (android.os.SystemClock.uptimeMillis() >= previewUntil) applyAmbientContext(snapshot.context)
@@ -202,8 +206,10 @@ class CompanionOverlayService : AccessibilityService() {
         val now = LocalTime.now()
         val quiet = settings.quietHoursEnabled && SchedulePolicy.contains(now, settings.quietStartMinutes, settings.quietEndMinutes)
         val outsideActive = settings.activeHoursEnabled && !SchedulePolicy.contains(now, settings.activeStartMinutes, settings.activeEndMinutes)
-        val device = app.deviceContextSource.state.value.copy(
+        val rawDevice = app.deviceContextSource.state.value
+        val device = rawDevice.copy(
             isWeekend = SchedulePolicy.isWeekend(app.deviceContextSource.state.value.dayOfWeek, settings.weekendDays),
+            classifiedBatteryState = batteryStateTracker.update(rawDevice.batteryPercent, rawDevice.isBatteryFull),
         )
         val context = AmbientContext(environment, device, CompanionPreferences(
             personality = settings.personality,
