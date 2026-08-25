@@ -14,5 +14,6 @@ class SettingsMigrationTest {
         assertFalse(migrated.weatherEnabled)
         assertTrue(migrated.batteryReactions)
         assertFalse(migrated.connectivityReactions)
+        assertEquals(CompanionArtwork.BIRD, migrated.selectedArtwork)
     }
 }

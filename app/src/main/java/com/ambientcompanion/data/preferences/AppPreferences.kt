@@ -25,7 +25,19 @@ import kotlinx.coroutines.sync.withLock
 private val Context.dataStore by preferencesDataStore("ambient_preferences")
 
 enum class CompanionSize(val dp: Int) { SMALL(68), MEDIUM(84), LARGE(104) }
-enum class CompanionAppearance { AMBIENT, EMOJI }
+enum class CompanionAppearance { AMBIENT, ARTWORK, EMOJI }
+enum class CompanionArtwork(val label: String) {
+    BIRD("Companion bird"),
+    BOY_HOODIE("Boy in hoodie"),
+    BULL_BLACK("Black bull"),
+    FOX("Fox"),
+    EAGLE_FLYING("Flying eagle"),
+    EAGLE_AVIATOR("Aviator eagle"),
+    GIRL_PORTRAIT("Girl portrait"),
+    GIRL_YELLOW_DRESS("Yellow dress"),
+    GIRL_MINT_HOODIE("Mint hoodie"),
+    PANDA("Panda"),
+}
 
 data class UserSettings(
     val schemaVersion: Int = SettingsMigration.CURRENT_SCHEMA_VERSION,
@@ -37,6 +49,7 @@ data class UserSettings(
     val reducedMotion: Boolean = false,
     val companionSizeDp: Int = CompanionSize.MEDIUM.dp,
     val companionAppearance: CompanionAppearance = CompanionAppearance.AMBIENT,
+    val selectedArtwork: CompanionArtwork = CompanionArtwork.BIRD,
     val selectedEmoji: String = "😊",
     val idleOpacity: Float = 0.72f,
     val edgeSnapEnabled: Boolean = false,
@@ -92,6 +105,9 @@ class AppPreferences(private val context: Context) {
             companionAppearance = values[COMPANION_APPEARANCE]
                 ?.let { name -> runCatching { CompanionAppearance.valueOf(name) }.getOrNull() }
                 ?: CompanionAppearance.AMBIENT,
+            selectedArtwork = values[SELECTED_ARTWORK]
+                ?.let { name -> runCatching { CompanionArtwork.valueOf(name) }.getOrNull() }
+                ?: CompanionArtwork.BIRD,
             selectedEmoji = values[SELECTED_EMOJI] ?: "😊",
             idleOpacity = (values[IDLE_OPACITY] ?: 0.72f).coerceIn(0.35f, 1f),
             edgeSnapEnabled = values[EDGE_SNAP_ENABLED] ?: false,
@@ -136,6 +152,7 @@ class AppPreferences(private val context: Context) {
                 it[REDUCED_MOTION] = next.reducedMotion
                 it[COMPANION_SIZE_DP] = next.companionSizeDp.coerceIn(MIN_COMPANION_SIZE_DP, MAX_COMPANION_SIZE_DP)
                 it[COMPANION_APPEARANCE] = next.companionAppearance.name
+                it[SELECTED_ARTWORK] = next.selectedArtwork.name
                 it[SELECTED_EMOJI] = next.selectedEmoji
                 it[IDLE_OPACITY] = next.idleOpacity.coerceIn(0.35f, 1f)
                 it[EDGE_SNAP_ENABLED] = next.edgeSnapEnabled
@@ -224,6 +241,7 @@ class AppPreferences(private val context: Context) {
         private val COMPANION_SIZE = intPreferencesKey("companion_size")
         private val COMPANION_SIZE_DP = intPreferencesKey("companion_size_dp")
         private val COMPANION_APPEARANCE = stringPreferencesKey("companion_appearance")
+        private val SELECTED_ARTWORK = stringPreferencesKey("selected_artwork")
         private val SELECTED_EMOJI = stringPreferencesKey("selected_emoji")
         private val IDLE_OPACITY = floatPreferencesKey("idle_opacity")
         private val EDGE_SNAP_ENABLED = booleanPreferencesKey("edge_snap_enabled")

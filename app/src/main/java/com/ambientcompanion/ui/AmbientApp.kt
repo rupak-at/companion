@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ambientcompanion.data.preferences.CompanionAppearance
+import com.ambientcompanion.data.preferences.CompanionArtwork
 import com.ambientcompanion.data.preferences.AppPreferences
 import com.ambientcompanion.data.preferences.UserSettings
 import com.ambientcompanion.domain.model.CompanionState
@@ -183,7 +184,7 @@ private fun Home(
     val state = snapshot?.state ?: CompanionState.DAY_CLEAR
     PremiumBackground {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            BrandMark(); Spacer(Modifier.height(34.dp)); Mascot(state, 154, settings.selectedEmoji.takeIf { settings.companionAppearance == CompanionAppearance.EMOJI }); Spacer(Modifier.height(18.dp))
+            BrandMark(); Spacer(Modifier.height(34.dp)); Mascot(state, 154, settings.selectedEmoji.takeIf { settings.companionAppearance == CompanionAppearance.EMOJI }, settings.selectedArtwork.takeIf { settings.companionAppearance == CompanionAppearance.ARTWORK }); Spacer(Modifier.height(18.dp))
             Text(messageFor(state), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(6.dp)); Text(contextLine(snapshot), color = MutedInk, fontSize = 14.sp); Spacer(Modifier.height(30.dp))
             PremiumCard { SettingRow("Floating companion", if (running) "Here with you" else "Currently resting") { Switch(running, toggle, colors = premiumSwitchColors()) } }
@@ -203,7 +204,11 @@ private fun Home(
                 shadowElevation = 8.dp,
             ) {
                 Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (settings.companionAppearance == CompanionAppearance.EMOJI) settings.selectedEmoji else "✦", fontSize = 30.sp)
+                    if (settings.companionAppearance == CompanionAppearance.ARTWORK) {
+                        Image(painterResource(settings.selectedArtwork.drawableRes()), settings.selectedArtwork.label, Modifier.size(40.dp), contentScale = ContentScale.Fit)
+                    } else {
+                        Text(if (settings.companionAppearance == CompanionAppearance.EMOJI) settings.selectedEmoji else "✦", fontSize = 30.sp)
+                    }
                     Column(Modifier.weight(1f).padding(start = 14.dp)) {
                         Text("Customize companion", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                         Text("Change mascot, emoji, size and fade", color = Color.White.copy(alpha = .72f), fontSize = 13.sp)
@@ -233,6 +238,7 @@ private fun Customize(
                     CompanionState.DAY_CLEAR,
                     138,
                     settings.selectedEmoji.takeIf { settings.companionAppearance == CompanionAppearance.EMOJI },
+                    settings.selectedArtwork.takeIf { settings.companionAppearance == CompanionAppearance.ARTWORK },
                 )
                 Spacer(Modifier.height(8.dp))
                 Text("Your floating companion", color = MutedInk, fontSize = 13.sp)
@@ -248,6 +254,12 @@ private fun Customize(
                     modifier = Modifier.weight(1f),
                 ) { update { it.copy(companionAppearance = CompanionAppearance.AMBIENT) } }
                 AppearanceChoice(
+                    title = "Artwork",
+                    symbol = "▣",
+                    selected = settings.companionAppearance == CompanionAppearance.ARTWORK,
+                    modifier = Modifier.weight(1f),
+                ) { update { it.copy(companionAppearance = CompanionAppearance.ARTWORK) } }
+                AppearanceChoice(
                     title = "Emoji",
                     symbol = settings.selectedEmoji,
                     selected = settings.companionAppearance == CompanionAppearance.EMOJI,
@@ -257,6 +269,9 @@ private fun Customize(
         }
         if (settings.companionAppearance == CompanionAppearance.EMOJI) {
             item { EmojiPicker(settings.selectedEmoji) { emoji -> update { it.copy(selectedEmoji = emoji) } } }
+        }
+        if (settings.companionAppearance == CompanionAppearance.ARTWORK) {
+            item { ArtworkPicker(settings.selectedArtwork) { artwork -> update { it.copy(selectedArtwork = artwork) } } }
         }
         item { SectionLabel("DISPLAY") }
         item { SizeControl(settings.companionSizeDp) { value -> update { it.copy(companionSizeDp = value) } } }
@@ -299,9 +314,12 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         item { ToggleCard("Start after reboot", "Off by default; requires enabled companion controls", settings.startAfterReboot) { value -> update { it.copy(startAfterReboot = value) } } }
         item { ActionCard("Assistive controls", "Enable Back, Home, Recents and system actions") { openAccessibilitySettings() } }
         item { SectionLabel("COMPANION") }
-        item { ActionCard("Appearance", if (settings.companionAppearance == CompanionAppearance.EMOJI) "Emoji · ${settings.selectedEmoji}" else "Ambient mascot") { update { it.copy(companionAppearance = if (it.companionAppearance == CompanionAppearance.AMBIENT) CompanionAppearance.EMOJI else CompanionAppearance.AMBIENT) } } }
+        item { ActionCard("Appearance", appearanceLabel(settings)) { update { it.copy(companionAppearance = CompanionAppearance.entries[(it.companionAppearance.ordinal + 1) % CompanionAppearance.entries.size]) } } }
         if (settings.companionAppearance == CompanionAppearance.EMOJI) {
             item { EmojiPicker(settings.selectedEmoji) { emoji -> update { it.copy(selectedEmoji = emoji) } } }
+        }
+        if (settings.companionAppearance == CompanionAppearance.ARTWORK) {
+            item { ArtworkPicker(settings.selectedArtwork) { artwork -> update { it.copy(selectedArtwork = artwork) } } }
         }
         item { SizeControl(settings.companionSizeDp) { value -> update { it.copy(companionSizeDp = value) } } }
         item { OpacityControl(settings.idleOpacity) { value -> update { it.copy(idleOpacity = value) } } }
@@ -371,7 +389,13 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
 }
 @Composable private fun PremiumBackground(content: @Composable BoxScope.() -> Unit) = Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Porcelain, Color(0xFFFFFDF9))))) { Canvas(Modifier.size(280.dp).align(Alignment.TopEnd).blur(48.dp)) { drawCircle(Color(0x22FFB86B), size.minDimension * .46f) }; content() }
 @Composable private fun BrandMark() = Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(28.dp).background(Aubergine, CircleShape), contentAlignment = Alignment.Center) { Text("•ᴗ•", color = Amber, fontSize = 10.sp, fontWeight = FontWeight.Bold) }; Text("  AMBIENT", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp) }
-@Composable private fun Mascot(state: CompanionState, size: Int, emoji: String? = null) { if (emoji != null) { Box(Modifier.size(size.dp), contentAlignment = Alignment.Center) { Text(emoji, fontSize = (size * .58f).sp) } } else { Image(painterResource(R.drawable.companion_mascot), "Ambient Companion", Modifier.size(size.dp), contentScale = ContentScale.Fit) } }
+@Composable private fun Mascot(state: CompanionState, size: Int, emoji: String? = null, artwork: CompanionArtwork? = null) {
+    when {
+        emoji != null -> Box(Modifier.size(size.dp), contentAlignment = Alignment.Center) { Text(emoji, fontSize = (size * .58f).sp) }
+        artwork != null -> Image(painterResource(artwork.drawableRes()), artwork.label, Modifier.size(size.dp), contentScale = ContentScale.Fit)
+        else -> Image(painterResource(R.drawable.companion_mascot), "Ambient Companion", Modifier.size(size.dp), contentScale = ContentScale.Fit)
+    }
+}
 @Composable private fun PremiumCard(content: @Composable ColumnScope.() -> Unit) = Surface(color = Color.White.copy(alpha = .9f), shape = RoundedCornerShape(28.dp), shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(22.dp), content = content) }
 @Composable private fun SettingRow(title: String, subtitle: String, control: @Composable () -> Unit) = Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, color = Ink, fontWeight = FontWeight.SemiBold); Text(subtitle, color = MutedInk, fontSize = 13.sp) }; control() }
 @Composable private fun ToggleCard(title: String, subtitle: String, checked: Boolean, change: (Boolean) -> Unit) = PremiumCard { SettingRow(title, subtitle) { Switch(checked, change, colors = premiumSwitchColors()) } }
@@ -402,6 +426,35 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         }
         Spacer(Modifier.height(6.dp))
     }
+}
+@Composable private fun ArtworkPicker(selected: CompanionArtwork, select: (CompanionArtwork) -> Unit) = PremiumCard {
+    Text("Choose artwork", color = Ink, fontWeight = FontWeight.SemiBold)
+    Spacer(Modifier.height(14.dp))
+    CompanionArtwork.entries.chunked(2).forEach { row ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            row.forEach { artwork ->
+                Surface(
+                    modifier = Modifier.weight(1f).height(118.dp).clickable { select(artwork) },
+                    color = if (artwork == selected) Color(0xFFFFE8C4) else Porcelain,
+                    shape = RoundedCornerShape(20.dp),
+                    border = if (artwork == selected) androidx.compose.foundation.BorderStroke(2.dp, AmberDeep) else null,
+                ) {
+                    Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Image(painterResource(artwork.drawableRes()), artwork.label, Modifier.size(72.dp), contentScale = ContentScale.Fit)
+                        Text(artwork.label, color = Ink, fontSize = 11.sp, maxLines = 1)
+                    }
+                }
+            }
+            if (row.size == 1) Spacer(Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(10.dp))
+    }
+}
+
+private fun appearanceLabel(settings: UserSettings): String = when (settings.companionAppearance) {
+    CompanionAppearance.AMBIENT -> "Ambient mascot"
+    CompanionAppearance.ARTWORK -> "Artwork · ${settings.selectedArtwork.label}"
+    CompanionAppearance.EMOJI -> "Emoji · ${settings.selectedEmoji}"
 }
 @Composable private fun OpacityControl(value: Float, update: (Float) -> Unit) = PremiumCard {
     SettingRow("Inactive opacity", "Fades to ${(value * 100).roundToInt()}% after 2.5 seconds") { Text("${(value * 100).roundToInt()}%", color = Aubergine, fontWeight = FontWeight.Bold) }

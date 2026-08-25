@@ -12,21 +12,25 @@ import android.graphics.RectF
 import android.view.View
 import android.view.animation.OvershootInterpolator
 import com.ambientcompanion.data.preferences.CompanionAppearance
+import com.ambientcompanion.data.preferences.CompanionArtwork
 import com.ambientcompanion.domain.model.CompanionState
 import com.ambientcompanion.R
 import com.ambientcompanion.renderer.AccessoryId
 import com.ambientcompanion.renderer.AnimationId
 import com.ambientcompanion.renderer.CompanionRenderer
+import com.ambientcompanion.ui.drawableRes
 
 class CompanionView(context: Context) : View(context), CompanionRenderer {
     private var state: CompanionState = CompanionState.DAY_CLEAR
     private var appearance = CompanionAppearance.AMBIENT
     private var emoji = "😊"
+    private var selectedArtwork = CompanionArtwork.BIRD
     private var idleOpacity = .72f
     private var reducedMotion = false
     private var accessory: AccessoryId? = null
     private var theme: String = "default"
     private val mascot = BitmapFactory.decodeResource(resources, R.drawable.companion_mascot)
+    private var artwork = BitmapFactory.decodeResource(resources, selectedArtwork.drawableRes())
     private val mascotPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val mascotBounds = RectF()
     private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -88,8 +92,8 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         val cx = width / 2f
         val cy = height / 2f
         val radius = minOf(width, height) * 0.37f
-        mascotPaint.colorFilter = stateTint(state)
-        canvas.drawBitmap(mascot, null, mascotBounds, mascotPaint)
+        mascotPaint.colorFilter = if (appearance == CompanionAppearance.AMBIENT) stateTint(state) else null
+        canvas.drawBitmap(if (appearance == CompanionAppearance.ARTWORK) artwork else mascot, null, mascotBounds, mascotPaint)
         drawAccessory(canvas, cx, cy, radius)
     }
 
@@ -248,11 +252,16 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
 
     fun configureAppearance(
         appearance: CompanionAppearance,
+        artwork: CompanionArtwork,
         emoji: String,
         idleOpacity: Float,
         reducedMotion: Boolean,
     ) {
         this.appearance = appearance
+        if (artwork != selectedArtwork) {
+            selectedArtwork = artwork
+            this.artwork = BitmapFactory.decodeResource(resources, artwork.drawableRes())
+        }
         this.emoji = emoji.ifBlank { "😊" }
         this.idleOpacity = idleOpacity.coerceIn(.35f, 1f)
         this.reducedMotion = reducedMotion
@@ -263,10 +272,10 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             rotation = 0f
             translationY = 0f
         }
-        contentDescription = if (appearance == CompanionAppearance.EMOJI) {
-            "$emoji floating emoji. Tap for a message, drag to move, or long press for actions."
-        } else {
-            "Ambient Companion. Tap for a message, drag to move, or long press for actions."
+        contentDescription = when (appearance) {
+            CompanionAppearance.EMOJI -> "$emoji floating emoji. Tap for a message, drag to move, or long press for actions."
+            CompanionAppearance.ARTWORK -> "${artwork.label} floating companion. Tap for a message, drag to move, or long press for actions."
+            CompanionAppearance.AMBIENT -> "Ambient Companion. Tap for a message, drag to move, or long press for actions."
         }
         invalidate()
         startIdleAnimation(reducedMotion)

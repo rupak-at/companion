@@ -227,6 +227,7 @@ class CompanionOverlayService : AccessibilityService() {
             val effectiveAppearance = if (settings.resourceMode == ResourceMode.MINIMAL) com.ambientcompanion.data.preferences.CompanionAppearance.EMOJI else settings.companionAppearance
             companionView?.configureAppearance(
                 effectiveAppearance,
+                settings.selectedArtwork,
                 settings.selectedEmoji,
                 settings.idleOpacity,
                 settings.reducedMotion || device.isPowerSaveMode || settings.resourceMode != ResourceMode.NORMAL,
