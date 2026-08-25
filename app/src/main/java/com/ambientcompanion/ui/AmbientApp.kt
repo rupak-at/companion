@@ -35,6 +35,8 @@ import com.ambientcompanion.R
 import com.ambientcompanion.domain.context.Personality
 import com.ambientcompanion.domain.context.ResourceMode
 import com.ambientcompanion.domain.behavior.QuickAction
+import com.ambientcompanion.domain.schedule.OutsideHoursBehavior
+import java.time.DayOfWeek
 import kotlin.math.roundToInt
 
 enum class AppScreen { HOME, CUSTOMIZE, SETTINGS, PREVIEW, DEBUG }
@@ -72,8 +74,8 @@ fun AmbientApp(
             AppScreen.HOME -> Home(settings, snapshot, overlayRunning, hasAccessibilityPermission, onToggleCompanion, onOpenAccessibilitySettings, onRefresh, onNavigate)
             AppScreen.CUSTOMIZE -> Customize(settings, onUpdateSettings, onNavigate)
             AppScreen.SETTINGS -> Settings(settings, onToggleCompanion, onUpdateSettings, onResetPosition, onAddQuickTile, onOpenAccessibilitySettings, onRefresh, onNavigate)
-            AppScreen.PREVIEW -> Preview(onPreviewState, onNavigate)
-            AppScreen.DEBUG -> Debug(onPreviewState, onNavigate)
+            AppScreen.PREVIEW -> Preview(settings, onPreviewState, onNavigate)
+            AppScreen.DEBUG -> Debug(settings, snapshot, onPreviewState, onNavigate)
         }
     }
 }
@@ -248,7 +250,13 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         item { ToggleCard("Weekend reactions", settings.weekendDays.joinToString { it.name.take(3) }, settings.weekendReactions) { value -> update { it.copy(weekendReactions = value) } } }
         item { SectionLabel("SCHEDULE") }
         item { ToggleCard("Quiet hours", "10:30 PM–7:00 AM", settings.quietHoursEnabled) { value -> update { it.copy(quietHoursEnabled = value) } } }
+        if (settings.quietHoursEnabled) item { TimeRangeCard("Quiet range", settings.quietStartMinutes, settings.quietEndMinutes) { start, end -> update { it.copy(quietStartMinutes = start, quietEndMinutes = end) } } }
         item { ToggleCard("Active hours", "7:00 AM–11:00 PM", settings.activeHoursEnabled) { value -> update { it.copy(activeHoursEnabled = value) } } }
+        if (settings.activeHoursEnabled) {
+            item { TimeRangeCard("Active range", settings.activeStartMinutes, settings.activeEndMinutes) { start, end -> update { it.copy(activeStartMinutes = start, activeEndMinutes = end) } } }
+            item { ActionCard("Outside active hours", settings.outsideHoursBehavior.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase)) { update { it.copy(outsideHoursBehavior = OutsideHoursBehavior.entries[(it.outsideHoursBehavior.ordinal + 1) % OutsideHoursBehavior.entries.size]) } } }
+        }
+        item { WeekendPicker(settings.weekendDays) { days -> update { it.copy(weekendDays = days) } } }
         item { SectionLabel("ACTIONS") }
         item { QuickActionPicker(settings.quickActions) { actions -> update { it.copy(quickActions = actions) } } }
         item { ToggleCard("Start after reboot", "Off by default; requires enabled companion controls", settings.startAfterReboot) { value -> update { it.copy(startAfterReboot = value) } } }
@@ -270,14 +278,15 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
     }
 }
 
-@Composable private fun Preview(preview: (CompanionState) -> Unit, navigate: (AppScreen) -> Unit) = ScreenList("State preview", { navigate(AppScreen.HOME) }) {
-    items(CompanionState.entries) { state -> Surface(Modifier.fillMaxWidth().clickable { preview(state) }, color = Color.White.copy(alpha = .88f), shape = RoundedCornerShape(24.dp)) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Mascot(state, 54); Column(Modifier.padding(start = 16.dp)) { Text(state.displayName(), color = Ink, fontWeight = FontWeight.SemiBold); Text("Tap to preview on the overlay", color = MutedInk, fontSize = 12.sp) } }
-    } }
+@Composable private fun Preview(settings: UserSettings, preview: (CompanionState) -> Unit, navigate: (AppScreen) -> Unit) = ScreenList("V2 preview", { navigate(AppScreen.HOME) }) {
+    item { PremiumCard { Text("Simulation", color = Ink, fontWeight = FontWeight.SemiBold); Text("Personality: ${settings.personality.name.lowercase()} · Theme: ${settings.theme}", color = MutedInk); Text("Battery 12% · Charging off · Network offline · Headphones on · Weekend", color = MutedInk, fontSize = 12.sp) } }
+    item { PremiumCard { Text("Persistent rule", color = AmberDeep, fontSize = 11.sp, fontWeight = FontWeight.Bold); Text("CRITICAL_BATTERY", color = Ink, fontWeight = FontWeight.SemiBold); Text("Temporary event: HEADPHONES_CONNECTED", color = MutedInk); Text("Accessory: HEADPHONES", color = MutedInk); Text("Message: “Feed me 🔌”", color = MutedInk) } }
+    items(CompanionState.entries) { state -> Surface(Modifier.fillMaxWidth().clickable { preview(state) }, color = Color.White.copy(alpha = .88f), shape = RoundedCornerShape(24.dp)) { Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Mascot(state, 54); Column(Modifier.padding(start = 16.dp)) { Text(state.displayName(), color = Ink, fontWeight = FontWeight.SemiBold); Text("Tap to preview on the overlay", color = MutedInk, fontSize = 12.sp) } } } }
 }
 
-@Composable private fun Debug(preview: (CompanionState) -> Unit, navigate: (AppScreen) -> Unit) = ScreenList("Developer controls", { navigate(AppScreen.SETTINGS) }) {
-    item { Text("Force any state without waiting for real time or weather.", color = MutedInk) }
+@Composable private fun Debug(settings: UserSettings, snapshot: ContextSnapshot?, preview: (CompanionState) -> Unit, navigate: (AppScreen) -> Unit) = ScreenList("Rule debugger", { navigate(AppScreen.SETTINGS) }) {
+    item { PremiumCard { Text("Current AmbientContext", color = Ink, fontWeight = FontWeight.SemiBold); Text("Environment: ${snapshot?.context?.weather ?: "unknown"} · ${snapshot?.context?.timePeriod ?: "unknown"}", color = MutedInk); Text("Renderer: ${settings.companionAppearance} · Resource: ${settings.resourceMode}", color = MutedInk); Text("Personality: ${settings.personality} · Pack: ${settings.messagePack}", color = MutedInk); Text("Cooldowns and event queue are managed by the overlay", color = MutedInk, fontSize = 12.sp) } }
+    item { Text("Force any state without waiting for real conditions.", color = MutedInk) }
     items(CompanionState.entries) { state -> ActionCard(state.displayName(), "Force state") { preview(state) } }
 }
 
@@ -355,6 +364,20 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
                 if (enabled && selected.size < 4) update(selected + action)
                 else if (!enabled) update(selected - action)
             }, enabled = checked || selected.size < 4, colors = premiumSwitchColors())
+        }
+    }
+}
+@Composable private fun TimeRangeCard(title: String, start: Int, end: Int, update: (Int, Int) -> Unit) = PremiumCard {
+    fun label(minutes: Int) = "%02d:%02d".format(minutes / 60, minutes % 60)
+    SettingRow(title, "${label(start)}–${label(end)}") { Text(label(start), color = Aubergine, fontWeight = FontWeight.Bold) }
+    Slider(start.toFloat(), { update((it / 15).roundToInt() * 15, end) }, valueRange = 0f..1425f, steps = 94)
+    Slider(end.toFloat(), { update(start, (it / 15).roundToInt() * 15) }, valueRange = 0f..1425f, steps = 94)
+}
+@Composable private fun WeekendPicker(selected: Set<DayOfWeek>, update: (Set<DayOfWeek>) -> Unit) = PremiumCard {
+    Text("Weekend days", color = Ink, fontWeight = FontWeight.SemiBold)
+    DayOfWeek.entries.forEach { day ->
+        SettingRow(day.name.lowercase().replaceFirstChar(Char::uppercase), "") {
+            Switch(day in selected, { enabled -> update(if (enabled) selected + day else selected - day) }, colors = premiumSwitchColors())
         }
     }
 }
