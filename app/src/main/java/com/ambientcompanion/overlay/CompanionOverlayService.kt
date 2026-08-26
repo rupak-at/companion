@@ -110,6 +110,9 @@ class CompanionOverlayService : AccessibilityService() {
     private var currentScreenContext = ScreenContext.EMPTY
     private var smartPositionActive = false
     private var positionBeforeSmartMove: Pair<Int, Int>? = null
+    private var positionAnimator: ValueAnimator? = null
+    private var manuallyPositionedPackage: String? = null
+    private var manualPositionOverride = false
     private var screenQuietUntil = 0L
     private var wellbeingContext = WellbeingContext.EMPTY
     private var lastWellbeingReaction: String? = null
@@ -211,6 +214,7 @@ class CompanionOverlayService : AccessibilityService() {
         ) {
             foregroundPackage = event.packageName?.toString() ?: foregroundPackage
         }
+        if (foregroundPackage != previousPackage) manualPositionOverride = false
         trackWellbeingEvent(event, previousPackage)
         if (!settings.screenAwarenessEnabled || foregroundPackage in settings.excludedScreenApps) {
             app.screenContextSource.clear()
@@ -436,6 +440,7 @@ class CompanionOverlayService : AccessibilityService() {
             smartPositionActive = true
             return
         }
+        if (manualPositionOverride && context.packageName == manuallyPositionedPackage) return
         if (!settings.smartRepositioningEnabled) return
         val screen = screenSize()
         val resolution = smartPositionController.resolve(
@@ -459,7 +464,8 @@ class CompanionOverlayService : AccessibilityService() {
         val params = layoutParams ?: return
         val startX = params.x
         val startY = params.y
-        ValueAnimator.ofFloat(0f, 1f).apply {
+        positionAnimator?.cancel()
+        positionAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 220L
             interpolator = DecelerateInterpolator()
             addUpdateListener { animator ->
@@ -470,6 +476,15 @@ class CompanionOverlayService : AccessibilityService() {
             }
             start()
         }
+    }
+
+    private fun takeManualPositionControl() {
+        positionAnimator?.cancel()
+        positionAnimator = null
+        smartPositionActive = false
+        positionBeforeSmartMove = null
+        manuallyPositionedPackage = currentScreenContext.packageName
+        manualPositionOverride = true
     }
 
     private fun showCompanion() {
@@ -787,6 +802,8 @@ class CompanionOverlayService : AccessibilityService() {
             val params = layoutParams ?: return@setOnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    takeManualPositionControl()
+                    hideMessage()
                     initialX = params.x
                     initialY = params.y
                     touchX = event.rawX
