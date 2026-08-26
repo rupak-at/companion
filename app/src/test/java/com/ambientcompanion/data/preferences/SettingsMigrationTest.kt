@@ -15,7 +15,7 @@ class SettingsMigrationTest {
         assertTrue(migrated.batteryReactions)
         assertFalse(migrated.connectivityReactions)
         assertEquals(CompanionArtwork.BIRD, migrated.selectedArtwork)
-        assertFalse(migrated.rotateArtworkEnabled)
+        assertFalse(migrated.cycleArtworkHourlyEnabled)
         assertFalse(migrated.screenAwarenessEnabled)
         assertTrue(migrated.sensitiveScreenModeEnabled)
     }

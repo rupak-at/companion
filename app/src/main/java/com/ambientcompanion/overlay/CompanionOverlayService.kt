@@ -28,6 +28,8 @@ import androidx.core.content.edit
 import com.ambientcompanion.MainActivity
 import com.ambientcompanion.AmbientApplication
 import com.ambientcompanion.data.preferences.UserSettings
+import com.ambientcompanion.data.preferences.CompanionAppearance
+import com.ambientcompanion.data.preferences.CompanionArtwork
 import com.ambientcompanion.accessibility.AssistiveAction
 import com.ambientcompanion.domain.message.MessageEngine
 import com.ambientcompanion.domain.message.MessagePackId
@@ -90,6 +92,20 @@ class CompanionOverlayService : AccessibilityService() {
     private val animationStateMachine = AnimationStateMachine()
     private val handler = Handler(Looper.getMainLooper())
     private val idleFadeRunnable = Runnable { companionView?.dimForInactivity() }
+    private var artworkCycleScheduled = false
+    private val artworkCycleRunnable = Runnable {
+        artworkCycleScheduled = false
+        serviceScope.launch {
+            val latest = app.preferences.currentSettings()
+            if (shouldCycleArtwork(latest)) {
+                val artworks = CompanionArtwork.entries
+                val next = artworks[(latest.selectedArtwork.ordinal + 1) % artworks.size]
+                app.preferences.updateSettings { it.copy(selectedArtwork = next) }
+                refreshContext()
+            }
+            syncArtworkCycle()
+        }
+    }
     private val boundaryRefresh = Runnable { refreshContext() }
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val app by lazy { application as AmbientApplication }
@@ -203,6 +219,8 @@ class CompanionOverlayService : AccessibilityService() {
     }
 
     private fun hideCompanion(updatePreference: Boolean = false) {
+        handler.removeCallbacks(artworkCycleRunnable)
+        artworkCycleScheduled = false
         companionView?.let { runCatching { windowManager.removeView(it) } }
         bubbleView?.let { runCatching { windowManager.removeView(it) } }
         quickMenuView?.let { runCatching { windowManager.removeView(it) } }
@@ -547,13 +565,13 @@ class CompanionOverlayService : AccessibilityService() {
     private fun refreshContext(force: Boolean = false) {
         serviceScope.launch {
             settings = app.preferences.currentSettings()
+            syncArtworkCycle()
             resizeCompanion(settings.companionSizeDp)
             val device = app.deviceContextSource.state.value
             val effectiveAppearance = if (settings.resourceMode == ResourceMode.MINIMAL) com.ambientcompanion.data.preferences.CompanionAppearance.EMOJI else settings.companionAppearance
             companionView?.configureAppearance(
                 effectiveAppearance,
                 settings.selectedArtwork,
-                settings.rotateArtworkEnabled,
                 settings.selectedEmoji,
                 settings.idleOpacity,
                 settings.reducedMotion || device.isPowerSaveMode || settings.resourceMode != ResourceMode.NORMAL,
@@ -1198,6 +1216,20 @@ class CompanionOverlayService : AccessibilityService() {
         handler.postDelayed(idleFadeRunnable, IDLE_FADE_DELAY_MS)
     }
 
+    private fun shouldCycleArtwork(candidate: UserSettings = settings): Boolean =
+        companionView != null && candidate.companionAppearance == CompanionAppearance.ARTWORK &&
+            candidate.resourceMode != ResourceMode.MINIMAL && candidate.cycleArtworkHourlyEnabled
+
+    private fun syncArtworkCycle() {
+        if (!shouldCycleArtwork()) {
+            handler.removeCallbacks(artworkCycleRunnable)
+            artworkCycleScheduled = false
+        } else if (!artworkCycleScheduled) {
+            artworkCycleScheduled = true
+            handler.postDelayed(artworkCycleRunnable, ARTWORK_CYCLE_INTERVAL_MS)
+        }
+    }
+
     companion object {
         @Volatile private var instance: CompanionOverlayService? = null
         @Volatile
@@ -1222,6 +1254,7 @@ class CompanionOverlayService : AccessibilityService() {
         private const val TAP_WINDOW_MS = 360L
         private const val EVENT_DURATION_MS = 2_500L
         private const val IDLE_FADE_DELAY_MS = 2_500L
+        private const val ARTWORK_CYCLE_INTERVAL_MS = 60 * 60_000L
         private const val APP_GREETING_COOLDOWN_MS = 30_000L
         private val contextMessages = listOf("You've got this ✨", "Nice to see you!", "Hope your day's going well")
         private val playfulMessages = listOf("Hey! 😳", "That tickles!", "I'm awake 👀")

@@ -1,6 +1,5 @@
 package com.ambientcompanion.overlay
 
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -12,7 +11,6 @@ import android.graphics.Typeface
 import android.graphics.RectF
 import android.view.View
 import android.view.animation.OvershootInterpolator
-import android.view.animation.LinearInterpolator
 import com.ambientcompanion.data.preferences.CompanionAppearance
 import com.ambientcompanion.data.preferences.CompanionArtwork
 import com.ambientcompanion.domain.model.CompanionState
@@ -27,9 +25,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     private var appearance = CompanionAppearance.AMBIENT
     private var emoji = "😊"
     private var selectedArtwork = CompanionArtwork.BIRD
-    private var rotateArtworkEnabled = false
-    private var artworkRotationDegrees = 0f
-    private var artworkRotationAnimator: ValueAnimator? = null
     private var idleOpacity = .72f
     private var idleDimmed = false
     private var displayOpacityLimit = 1f
@@ -103,10 +98,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         }
         if (appearance == CompanionAppearance.ARTWORK) {
             mascotPaint.colorFilter = null
-            val checkpoint = canvas.save()
-            canvas.rotate(artworkRotationDegrees, width / 2f, height / 2f)
             canvas.drawBitmap(artwork, null, mascotBounds, mascotPaint)
-            canvas.restoreToCount(checkpoint)
             return
         }
         val cx = width / 2f
@@ -172,7 +164,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             .scaleY(if (dragging) 1.08f else 1f)
             .setDuration(150)
             .start()
-        if (!dragging) updateArtworkRotation()
     }
 
     fun startIdleAnimation(reducedMotion: Boolean = false) {
@@ -199,7 +190,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
 
     fun pauseAnimation() {
         animate().cancel()
-        artworkRotationAnimator?.pause()
     }
 
     override fun setState(state: CompanionState) = applyState(state, reducedMotion)
@@ -250,10 +240,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         if (idleDimmed) animate().alpha(minOf(idleOpacity, displayOpacityLimit)).setDuration(if (reducedMotion) 0 else 180).start()
     }
     override fun pause() = pauseAnimation()
-    override fun resume() {
-        startIdleAnimation(reducedMotion)
-        updateArtworkRotation()
-    }
+    override fun resume() = startIdleAnimation(reducedMotion)
     fun setTheme(theme: String) { this.theme = theme; invalidate() }
 
     fun applyState(next: CompanionState, reducedMotion: Boolean) {
@@ -276,7 +263,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     fun configureAppearance(
         appearance: CompanionAppearance,
         artwork: CompanionArtwork,
-        rotateArtwork: Boolean,
         emoji: String,
         idleOpacity: Float,
         reducedMotion: Boolean,
@@ -284,7 +270,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         val normalizedEmoji = emoji.ifBlank { "😊" }
         val appearanceChanged = this.appearance != appearance ||
             selectedArtwork != artwork ||
-            rotateArtworkEnabled != rotateArtwork ||
             this.emoji != normalizedEmoji ||
             this.reducedMotion != reducedMotion
         this.appearance = appearance
@@ -292,12 +277,10 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             selectedArtwork = artwork
             this.artwork = BitmapFactory.decodeResource(resources, artwork.drawableRes())
         }
-        rotateArtworkEnabled = rotateArtwork
         this.emoji = normalizedEmoji
         this.idleOpacity = idleOpacity.coerceIn(.35f, 1f)
         if (idleDimmed) animate().alpha(minOf(this.idleOpacity, displayOpacityLimit)).setDuration(if (reducedMotion) 0 else 180).start()
         this.reducedMotion = reducedMotion
-        updateArtworkRotation()
         if (appearance == CompanionAppearance.EMOJI) {
             animate().cancel()
             scaleX = 1f
@@ -312,38 +295,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         }
         invalidate()
         if (appearanceChanged) startIdleAnimation(reducedMotion)
-    }
-
-    private fun updateArtworkRotation() {
-        val shouldRotate = appearance == CompanionAppearance.ARTWORK && rotateArtworkEnabled && !reducedMotion
-        if (!shouldRotate) {
-            artworkRotationAnimator?.cancel()
-            artworkRotationAnimator = null
-            artworkRotationDegrees = 0f
-            invalidate()
-            return
-        }
-        artworkRotationAnimator?.takeIf { it.isPaused }?.let {
-            it.resume()
-            return
-        }
-        if (artworkRotationAnimator?.isRunning == true) return
-        artworkRotationAnimator = ValueAnimator.ofFloat(0f, 360f).apply {
-            duration = 60 * 60_000L
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = LinearInterpolator()
-            addUpdateListener {
-                artworkRotationDegrees = it.animatedValue as Float
-                invalidate()
-            }
-            start()
-        }
-    }
-
-    override fun onDetachedFromWindow() {
-        artworkRotationAnimator?.cancel()
-        artworkRotationAnimator = null
-        super.onDetachedFromWindow()
     }
 
     fun wake() {

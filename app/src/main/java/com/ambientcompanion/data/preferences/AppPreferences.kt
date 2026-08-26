@@ -52,7 +52,7 @@ data class UserSettings(
     val companionSizeDp: Int = CompanionSize.MEDIUM.dp,
     val companionAppearance: CompanionAppearance = CompanionAppearance.AMBIENT,
     val selectedArtwork: CompanionArtwork = CompanionArtwork.BIRD,
-    val rotateArtworkEnabled: Boolean = false,
+    val cycleArtworkHourlyEnabled: Boolean = false,
     val selectedEmoji: String = "😊",
     val idleOpacity: Float = 0.72f,
     val edgeSnapEnabled: Boolean = false,
@@ -127,7 +127,7 @@ class AppPreferences(private val context: Context) {
             selectedArtwork = values[SELECTED_ARTWORK]
                 ?.let { name -> runCatching { CompanionArtwork.valueOf(name) }.getOrNull() }
                 ?: CompanionArtwork.BIRD,
-            rotateArtworkEnabled = values[ROTATE_ARTWORK_ENABLED] ?: false,
+            cycleArtworkHourlyEnabled = values[CYCLE_ARTWORK_HOURLY_ENABLED] ?: false,
             selectedEmoji = values[SELECTED_EMOJI] ?: "😊",
             idleOpacity = (values[IDLE_OPACITY] ?: 0.72f).coerceIn(0.35f, 1f),
             edgeSnapEnabled = values[EDGE_SNAP_ENABLED] ?: false,
@@ -189,7 +189,7 @@ class AppPreferences(private val context: Context) {
                 it[COMPANION_SIZE_DP] = next.companionSizeDp.coerceIn(MIN_COMPANION_SIZE_DP, MAX_COMPANION_SIZE_DP)
                 it[COMPANION_APPEARANCE] = next.companionAppearance.name
                 it[SELECTED_ARTWORK] = next.selectedArtwork.name
-                it[ROTATE_ARTWORK_ENABLED] = next.rotateArtworkEnabled
+                it[CYCLE_ARTWORK_HOURLY_ENABLED] = next.cycleArtworkHourlyEnabled
                 it[SELECTED_EMOJI] = next.selectedEmoji
                 it[IDLE_OPACITY] = next.idleOpacity.coerceIn(0.35f, 1f)
                 it[EDGE_SNAP_ENABLED] = next.edgeSnapEnabled
@@ -295,7 +295,7 @@ class AppPreferences(private val context: Context) {
         private val COMPANION_SIZE_DP = intPreferencesKey("companion_size_dp")
         private val COMPANION_APPEARANCE = stringPreferencesKey("companion_appearance")
         private val SELECTED_ARTWORK = stringPreferencesKey("selected_artwork")
-        private val ROTATE_ARTWORK_ENABLED = booleanPreferencesKey("rotate_artwork_enabled")
+        private val CYCLE_ARTWORK_HOURLY_ENABLED = booleanPreferencesKey("cycle_artwork_hourly_enabled")
         private val SELECTED_EMOJI = stringPreferencesKey("selected_emoji")
         private val IDLE_OPACITY = floatPreferencesKey("idle_opacity")
         private val EDGE_SNAP_ENABLED = booleanPreferencesKey("edge_snap_enabled")
