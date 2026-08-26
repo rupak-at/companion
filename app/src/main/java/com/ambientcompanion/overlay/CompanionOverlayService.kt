@@ -433,7 +433,7 @@ class CompanionOverlayService : AccessibilityService() {
         view.alpha = when (requestedMode) {
             CompanionDisplayMode.QUIET -> .58f
             CompanionDisplayMode.EDGE_PEEK, CompanionDisplayMode.PRIVACY -> .52f
-            else -> settings.idleOpacity
+            else -> 1f
         }
         if (requestedMode in setOf(CompanionDisplayMode.EDGE_PEEK, CompanionDisplayMode.PRIVACY)) {
             val screen = screenSize()
