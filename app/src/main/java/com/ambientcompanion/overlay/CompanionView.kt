@@ -88,26 +88,29 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val layer = canvas.saveLayerAlpha(
-            0f,
-            0f,
-            width.toFloat(),
-            height.toFloat(),
-            (contentOpacity * 255).roundToInt(),
-        )
+        val paintAlpha = (contentOpacity * 255).roundToInt()
         if (appearance == CompanionAppearance.EMOJI) {
+            emojiPaint.alpha = paintAlpha
             emojiPaint.textSize = (minOf(width, height) * .82f).toInt().toFloat()
             val centerY = height / 2f - (emojiPaint.ascent() + emojiPaint.descent()) / 2f
             val centerX = (width / 2f).toInt().toFloat()
             canvas.drawText(emoji, centerX, centerY.toInt().toFloat(), emojiPaint)
-            canvas.restoreToCount(layer)
+            emojiPaint.alpha = 255
             return
         }
+        if (appearance == CompanionAppearance.ARTWORK) {
+            mascotPaint.colorFilter = null
+            mascotPaint.alpha = paintAlpha
+            canvas.drawBitmap(artwork, null, mascotBounds, mascotPaint)
+            mascotPaint.alpha = 255
+            return
+        }
+        val layer = canvas.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), paintAlpha)
         val cx = width / 2f
         val cy = height / 2f
         val radius = minOf(width, height) * 0.37f
-        mascotPaint.colorFilter = if (appearance == CompanionAppearance.AMBIENT) stateTint(state) else null
-        canvas.drawBitmap(if (appearance == CompanionAppearance.ARTWORK) artwork else mascot, null, mascotBounds, mascotPaint)
+        mascotPaint.colorFilter = stateTint(state)
+        canvas.drawBitmap(mascot, null, mascotBounds, mascotPaint)
         drawAccessory(canvas, cx, cy, radius)
         canvas.restoreToCount(layer)
     }
