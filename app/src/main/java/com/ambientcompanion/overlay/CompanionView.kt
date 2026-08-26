@@ -52,7 +52,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         isDither = false
         hinting = Paint.HINTING_ON
     }
-    private val fadeRunnable = Runnable {
+    fun dimForInactivity() {
         if (appearance != CompanionAppearance.EMOJI) {
             animate().cancel()
             translationY = 0f
@@ -157,14 +157,12 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             scaleY = 1f
             rotation = 0f
             translationY = 0f
-            if (!dragging) scheduleIdleFade()
             return
         }
         animate()
             .scaleX(if (dragging) 0.92f else 1f)
             .scaleY(if (dragging) 1.08f else 1f)
             .setDuration(150)
-            .withEndAction { if (!dragging) scheduleIdleFade() }
             .start()
     }
 
@@ -175,10 +173,8 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             scaleX = 1f
             scaleY = 1f
             translationY = 0f
-            scheduleIdleFade()
             return
         }
-        scheduleIdleFade()
         animate()
             .translationY(-resources.displayMetrics.density * 3f)
             .setDuration(1_800)
@@ -193,7 +189,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     }
 
     fun pauseAnimation() {
-        removeCallbacks(fadeRunnable)
         animate().cancel()
     }
 
@@ -303,7 +298,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     }
 
     fun wake() {
-        removeCallbacks(fadeRunnable)
         idleDimmed = false
         animate().cancel()
         alpha = displayOpacityLimit
@@ -312,11 +306,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     fun setDisplayOpacityLimit(value: Float) {
         displayOpacityLimit = value.coerceIn(.35f, 1f)
         alpha = if (idleDimmed) minOf(idleOpacity, displayOpacityLimit) else displayOpacityLimit
-    }
-
-    private fun scheduleIdleFade() {
-        removeCallbacks(fadeRunnable)
-        postDelayed(fadeRunnable, IDLE_DELAY_MS)
     }
 
     private fun drawAccessory(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
@@ -376,9 +365,5 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         CompanionState.COLD, CompanionState.SNOW, CompanionState.FOG -> Color.rgb(239, 249, 249) to Color.rgb(151, 196, 199)
         CompanionState.EVENING_CLEAR, CompanionState.EVENING_CLOUDY -> Color.rgb(255, 220, 198) to Color.rgb(199, 123, 132)
         else -> Color.rgb(255, 231, 168) to Color.rgb(255, 178, 82)
-    }
-
-    companion object {
-        private const val IDLE_DELAY_MS = 2_500L
     }
 }

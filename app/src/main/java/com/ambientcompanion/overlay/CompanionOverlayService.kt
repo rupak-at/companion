@@ -89,6 +89,7 @@ class CompanionOverlayService : AccessibilityService() {
     private var renderer: CompanionRenderer? = null
     private val animationStateMachine = AnimationStateMachine()
     private val handler = Handler(Looper.getMainLooper())
+    private val idleFadeRunnable = Runnable { companionView?.dimForInactivity() }
     private val boundaryRefresh = Runnable { refreshContext() }
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val app by lazy { application as AmbientApplication }
@@ -137,6 +138,7 @@ class CompanionOverlayService : AccessibilityService() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
+                    handler.removeCallbacks(idleFadeRunnable)
                     screenActive = false
                     eventQueue.clear()
                     eventInFlight = false
@@ -149,6 +151,7 @@ class CompanionOverlayService : AccessibilityService() {
                     screenActive = true
                     animationStateMachine.resume()
                     renderer?.resume()
+                    scheduleIdleFade()
                     sessionTracker.foreground(foregroundPackage, true, android.os.SystemClock.elapsedRealtime())
                     refreshContext()
                 }
@@ -518,6 +521,7 @@ class CompanionOverlayService : AccessibilityService() {
             view.startIdleAnimation()
         }
         isRunning = true
+        scheduleIdleFade()
         handler.postDelayed(::showAppGreeting, 500L)
     }
 
@@ -667,6 +671,7 @@ class CompanionOverlayService : AccessibilityService() {
             currentAnimation = AnimationId.IDLE
             animationStateMachine.finish()
             refreshContext()
+            scheduleIdleFade()
         }, EVENT_DURATION_MS)
     }
 
@@ -793,6 +798,7 @@ class CompanionOverlayService : AccessibilityService() {
                 animationStateMachine.finish()
                 currentAnimation = AnimationId.IDLE
                 companionView?.startIdleAnimation(settings.reducedMotion)
+                scheduleIdleFade()
             }, 700L)
         }
         tapAction = Runnable(::runTapAction)
@@ -810,6 +816,7 @@ class CompanionOverlayService : AccessibilityService() {
             val params = layoutParams ?: return@setOnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    handler.removeCallbacks(idleFadeRunnable)
                     takeManualPositionControl()
                     hideMessage()
                     initialX = params.x
@@ -852,6 +859,7 @@ class CompanionOverlayService : AccessibilityService() {
                     } else {
                         (view as CompanionView).startIdleAnimation()
                     }
+                    scheduleIdleFade()
                     true
                 }
                 else -> false
@@ -1184,6 +1192,11 @@ class CompanionOverlayService : AccessibilityService() {
 
     private fun View.touchSlop(): Int = android.view.ViewConfiguration.get(context).scaledTouchSlop
 
+    private fun scheduleIdleFade() {
+        handler.removeCallbacks(idleFadeRunnable)
+        handler.postDelayed(idleFadeRunnable, IDLE_FADE_DELAY_MS)
+    }
+
     companion object {
         @Volatile private var instance: CompanionOverlayService? = null
         @Volatile
@@ -1207,6 +1220,7 @@ class CompanionOverlayService : AccessibilityService() {
         private const val PREVIEW_DURATION_MS = 10_000L
         private const val TAP_WINDOW_MS = 360L
         private const val EVENT_DURATION_MS = 2_500L
+        private const val IDLE_FADE_DELAY_MS = 2_500L
         private const val APP_GREETING_COOLDOWN_MS = 30_000L
         private val contextMessages = listOf("You've got this ✨", "Nice to see you!", "Hope your day's going well")
         private val playfulMessages = listOf("Hey! 😳", "That tickles!", "I'm awake 👀")
