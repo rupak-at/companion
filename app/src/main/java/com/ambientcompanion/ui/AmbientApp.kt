@@ -298,6 +298,7 @@ private fun Customize(
         }
         if (settings.companionAppearance == CompanionAppearance.ARTWORK) {
             item { ArtworkPicker(settings.selectedArtwork) { artwork -> update { it.copy(selectedArtwork = artwork) } } }
+            item { ToggleCard("Rotate artwork", "One complete rotation every hour", settings.rotateArtworkEnabled) { value -> update { it.copy(rotateArtworkEnabled = value) } } }
         }
         item { SectionLabel("DISPLAY") }
         item { SizeControl(settings.companionSizeDp) { value -> update { it.copy(companionSizeDp = value) } } }
@@ -351,6 +352,7 @@ private fun Settings(settings: UserSettings, toggleCompanion: (Boolean) -> Unit,
         }
         if (settings.companionAppearance == CompanionAppearance.ARTWORK) {
             item { ArtworkPicker(settings.selectedArtwork) { artwork -> update { it.copy(selectedArtwork = artwork) } } }
+            item { ToggleCard("Rotate artwork", "One complete rotation every hour", settings.rotateArtworkEnabled) { value -> update { it.copy(rotateArtworkEnabled = value) } } }
         }
         item { SizeControl(settings.companionSizeDp) { value -> update { it.copy(companionSizeDp = value) } } }
         item { OpacityControl(settings.idleOpacity) { value -> update { it.copy(idleOpacity = value) } } }

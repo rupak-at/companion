@@ -553,6 +553,7 @@ class CompanionOverlayService : AccessibilityService() {
             companionView?.configureAppearance(
                 effectiveAppearance,
                 settings.selectedArtwork,
+                settings.rotateArtworkEnabled,
                 settings.selectedEmoji,
                 settings.idleOpacity,
                 settings.reducedMotion || device.isPowerSaveMode || settings.resourceMode != ResourceMode.NORMAL,
