@@ -259,12 +259,17 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         idleOpacity: Float,
         reducedMotion: Boolean,
     ) {
+        val normalizedEmoji = emoji.ifBlank { "😊" }
+        val appearanceChanged = this.appearance != appearance ||
+            selectedArtwork != artwork ||
+            this.emoji != normalizedEmoji ||
+            this.reducedMotion != reducedMotion
         this.appearance = appearance
         if (artwork != selectedArtwork) {
             selectedArtwork = artwork
             this.artwork = BitmapFactory.decodeResource(resources, artwork.drawableRes())
         }
-        this.emoji = emoji.ifBlank { "😊" }
+        this.emoji = normalizedEmoji
         this.idleOpacity = idleOpacity.coerceIn(.35f, 1f)
         this.reducedMotion = reducedMotion
         if (appearance == CompanionAppearance.EMOJI) {
@@ -280,7 +285,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             CompanionAppearance.AMBIENT -> "Ambient Companion. Tap for a message, drag to move, or long press for actions."
         }
         invalidate()
-        startIdleAnimation(reducedMotion)
+        if (appearanceChanged) startIdleAnimation(reducedMotion)
     }
 
     fun wake() {
