@@ -430,11 +430,11 @@ class CompanionOverlayService : AccessibilityService() {
             else -> settings.companionSizeDp
         }
         resizeCompanion(targetSize)
-        view.alpha = when (requestedMode) {
+        view.setDisplayOpacityLimit(when (requestedMode) {
             CompanionDisplayMode.QUIET -> .58f
             CompanionDisplayMode.EDGE_PEEK, CompanionDisplayMode.PRIVACY -> .52f
             else -> 1f
-        }
+        })
         if (requestedMode in setOf(CompanionDisplayMode.EDGE_PEEK, CompanionDisplayMode.PRIVACY)) {
             val screen = screenSize()
             val targetX = if (params.x + params.width / 2 < screen.x / 2) -params.width / 2 else screen.x - params.width / 2
@@ -615,7 +615,7 @@ class CompanionOverlayService : AccessibilityService() {
         animationStateMachine.finish()
         playAnimation(resolved.behavior.idleAnimation, AnimationPhase.AUTOMATIC)
         currentAccessory = resolved.behavior.accessory
-        if (outsideActive && settings.outsideHoursBehavior == OutsideHoursBehavior.PEEK_FROM_EDGE) companionView?.alpha = .48f
+        if (outsideActive && settings.outsideHoursBehavior == OutsideHoursBehavior.PEEK_FROM_EDGE) companionView?.setDisplayOpacityLimit(.48f)
         val event = if (eventInFlight) null else eventQueue.poll()
         if (event != null && !quiet) playEvent(event)
         else if (resolved.behavior.automaticMessageAllowed) maybeShowAutomaticMessage(currentState)

@@ -1,6 +1,5 @@
 package com.ambientcompanion.overlay
 
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -20,7 +19,6 @@ import com.ambientcompanion.renderer.AccessoryId
 import com.ambientcompanion.renderer.AnimationId
 import com.ambientcompanion.renderer.CompanionRenderer
 import com.ambientcompanion.ui.drawableRes
-import kotlin.math.roundToInt
 
 class CompanionView(context: Context) : View(context), CompanionRenderer {
     private var state: CompanionState = CompanionState.DAY_CLEAR
@@ -28,9 +26,8 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     private var emoji = "😊"
     private var selectedArtwork = CompanionArtwork.BIRD
     private var idleOpacity = .72f
-    private var contentOpacity = 1f
     private var idleDimmed = false
-    private var opacityAnimator: ValueAnimator? = null
+    private var displayOpacityLimit = 1f
     private var reducedMotion = false
     private var accessory: AccessoryId? = null
     private var theme: String = "default"
@@ -61,7 +58,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             translationY = 0f
         }
         idleDimmed = true
-        animateContentOpacity(idleOpacity)
+        animate().alpha(minOf(idleOpacity, displayOpacityLimit)).setDuration(if (reducedMotion) 0 else 450).start()
     }
 
     init {
@@ -92,31 +89,24 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val paintAlpha = (contentOpacity * 255).roundToInt()
         if (appearance == CompanionAppearance.EMOJI) {
-            emojiPaint.alpha = paintAlpha
             emojiPaint.textSize = (minOf(width, height) * .82f).toInt().toFloat()
             val centerY = height / 2f - (emojiPaint.ascent() + emojiPaint.descent()) / 2f
             val centerX = (width / 2f).toInt().toFloat()
             canvas.drawText(emoji, centerX, centerY.toInt().toFloat(), emojiPaint)
-            emojiPaint.alpha = 255
             return
         }
         if (appearance == CompanionAppearance.ARTWORK) {
             mascotPaint.colorFilter = null
-            mascotPaint.alpha = paintAlpha
             canvas.drawBitmap(artwork, null, mascotBounds, mascotPaint)
-            mascotPaint.alpha = 255
             return
         }
-        val layer = canvas.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), paintAlpha)
         val cx = width / 2f
         val cy = height / 2f
         val radius = minOf(width, height) * 0.37f
         mascotPaint.colorFilter = stateTint(state)
         canvas.drawBitmap(mascot, null, mascotBounds, mascotPaint)
         drawAccessory(canvas, cx, cy, radius)
-        canvas.restoreToCount(layer)
     }
 
     override fun performClick(): Boolean {
@@ -173,7 +163,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         animate()
             .scaleX(if (dragging) 0.92f else 1f)
             .scaleY(if (dragging) 1.08f else 1f)
-            .alpha(1f)
             .setDuration(150)
             .withEndAction { if (!dragging) scheduleIdleFade() }
             .start()
@@ -183,7 +172,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         animate().cancel()
         this.reducedMotion = reducedMotion
         if (reducedMotion || appearance == CompanionAppearance.EMOJI) {
-            alpha = 1f
             scaleX = 1f
             scaleY = 1f
             translationY = 0f
@@ -228,15 +216,15 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             AnimationId.DOUBLE_TAP_SURPRISED -> playSurprisedReaction()
             AnimationId.DRAG -> setDragging(true)
             AnimationId.EDGE_LAND -> setDragging(false)
-            AnimationId.SLEEP -> animate().rotation(-5f).scaleY(.94f).alpha(.78f).setDuration(500).start()
-            AnimationId.WAKE_UP -> { wake(); animate().rotation(0f).scaleY(1f).alpha(1f).setDuration(350).start() }
+            AnimationId.SLEEP -> animate().rotation(-5f).scaleY(.94f).setDuration(500).start()
+            AnimationId.WAKE_UP -> { wake(); animate().rotation(0f).scaleY(1f).setDuration(350).start() }
             AnimationId.BATTERY_LOW -> animate().translationY(resources.displayMetrics.density * 4f).rotation(-4f).setDuration(450).start()
             AnimationId.RAIN -> animate().rotationBy(-3f).setDuration(180).withEndAction { animate().rotation(0f).setDuration(180).start() }.start()
             AnimationId.COLD -> animate().translationX(resources.displayMetrics.density * 2f).setDuration(80).withEndAction { animate().translationX(-resources.displayMetrics.density * 2f).setDuration(80).withEndAction { animate().translationX(0f).setDuration(80).start() }.start() }.start()
             AnimationId.HOT -> animate().scaleY(.95f).scaleX(1.04f).setDuration(350).withEndAction { animate().scaleX(1f).scaleY(1f).setDuration(350).start() }.start()
             AnimationId.MESSAGE_SHOW -> animate().scaleX(1.06f).scaleY(1.06f).setDuration(160).start()
             AnimationId.MESSAGE_HIDE -> animate().scaleX(1f).scaleY(1f).setDuration(160).start()
-            AnimationId.STATE_TRANSITION -> animate().alpha(.7f).setDuration(120).withEndAction { animate().alpha(1f).setDuration(180).start() }.start()
+            AnimationId.STATE_TRANSITION -> animate().scaleX(.96f).scaleY(.96f).setDuration(120).withEndAction { animate().scaleX(1f).scaleY(1f).setDuration(180).start() }.start()
             AnimationId.TIRED -> animate().scaleY(.92f).rotation(-3f).setDuration(500).start()
             AnimationId.EXHAUSTED -> animate().scaleY(.82f).rotation(-8f).translationY(resources.displayMetrics.density * 5f).setDuration(650).start()
             AnimationId.CHARGING, AnimationId.BATTERY_FULL, AnimationId.HEADPHONES,
@@ -254,7 +242,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     override fun setAccessory(accessory: AccessoryId?) { this.accessory = accessory; invalidate() }
     override fun setOpacity(value: Float) {
         idleOpacity = value.coerceIn(.35f, 1f)
-        if (idleDimmed) animateContentOpacity(idleOpacity)
+        if (idleDimmed) animate().alpha(minOf(idleOpacity, displayOpacityLimit)).setDuration(if (reducedMotion) 0 else 180).start()
     }
     override fun pause() = pauseAnimation()
     override fun resume() = startIdleAnimation(reducedMotion)
@@ -270,9 +258,9 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         if (reducedMotion || appearance == CompanionAppearance.EMOJI) {
             apply()
         } else {
-            animate().alpha(0f).scaleX(.86f).scaleY(.86f).setDuration(150).withEndAction {
+            animate().scaleX(.86f).scaleY(.86f).setDuration(150).withEndAction {
                 apply()
-                animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220).start()
+                animate().scaleX(1f).scaleY(1f).setDuration(220).start()
             }.start()
         }
     }
@@ -296,7 +284,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         }
         this.emoji = normalizedEmoji
         this.idleOpacity = idleOpacity.coerceIn(.35f, 1f)
-        if (idleDimmed) animateContentOpacity(this.idleOpacity)
+        if (idleDimmed) animate().alpha(minOf(this.idleOpacity, displayOpacityLimit)).setDuration(if (reducedMotion) 0 else 180).start()
         this.reducedMotion = reducedMotion
         if (appearance == CompanionAppearance.EMOJI) {
             animate().cancel()
@@ -316,30 +304,14 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
 
     fun wake() {
         removeCallbacks(fadeRunnable)
-        opacityAnimator?.cancel()
-        opacityAnimator = null
         idleDimmed = false
-        contentOpacity = 1f
-        invalidate()
         animate().cancel()
-        alpha = 1f
+        alpha = displayOpacityLimit
     }
 
-    private fun animateContentOpacity(target: Float) {
-        opacityAnimator?.cancel()
-        if (reducedMotion) {
-            contentOpacity = target
-            invalidate()
-            return
-        }
-        opacityAnimator = ValueAnimator.ofFloat(contentOpacity, target).apply {
-            duration = 450L
-            addUpdateListener {
-                contentOpacity = it.animatedValue as Float
-                invalidate()
-            }
-            start()
-        }
+    fun setDisplayOpacityLimit(value: Float) {
+        displayOpacityLimit = value.coerceIn(.35f, 1f)
+        alpha = if (idleDimmed) minOf(idleOpacity, displayOpacityLimit) else displayOpacityLimit
     }
 
     private fun scheduleIdleFade() {
