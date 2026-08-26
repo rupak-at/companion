@@ -56,6 +56,10 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         hinting = Paint.HINTING_ON
     }
     private val fadeRunnable = Runnable {
+        if (appearance != CompanionAppearance.EMOJI) {
+            animate().cancel()
+            translationY = 0f
+        }
         idleDimmed = true
         animateContentOpacity(idleOpacity)
     }

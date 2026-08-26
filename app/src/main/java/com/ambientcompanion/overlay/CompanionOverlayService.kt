@@ -792,6 +792,7 @@ class CompanionOverlayService : AccessibilityService() {
             if (tapCount in 1..2) handler.postDelayed({
                 animationStateMachine.finish()
                 currentAnimation = AnimationId.IDLE
+                companionView?.startIdleAnimation(settings.reducedMotion)
             }, 700L)
         }
         tapAction = Runnable(::runTapAction)
