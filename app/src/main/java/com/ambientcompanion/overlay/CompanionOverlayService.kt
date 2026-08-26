@@ -843,7 +843,11 @@ class CompanionOverlayService : AccessibilityService() {
                         if (tapCount >= 3) runTapAction() else handler.postDelayed(tapAction, TAP_WINDOW_MS)
                     }
                     if (dragged) {
-                        if (settings.edgeSnapEnabled) snapToNearestEdge(view) else savePosition(view as CompanionView)
+                        if (settings.screenAwarenessEnabled && settings.edgeSnapEnabled) {
+                            snapToNearestEdge(view)
+                        } else {
+                            savePosition(view as CompanionView)
+                        }
                     } else {
                         (view as CompanionView).startIdleAnimation()
                     }
@@ -873,7 +877,8 @@ class CompanionOverlayService : AccessibilityService() {
         val maxY = (screen.y - view.height).coerceAtLeast(0)
         val targetX = if (params.x < maxX / 2) 0 else maxX
 
-        ValueAnimator.ofInt(params.x, targetX).apply {
+        positionAnimator?.cancel()
+        positionAnimator = ValueAnimator.ofInt(params.x, targetX).apply {
             duration = 200
             interpolator = DecelerateInterpolator()
             addUpdateListener {
@@ -881,6 +886,7 @@ class CompanionOverlayService : AccessibilityService() {
                 windowManager.updateViewLayout(view, params)
             }
             doOnEnd {
+                positionAnimator = null
                 preferences.edit {
                     putFloat(KEY_X, if (maxX == 0) 0f else params.x.toFloat() / maxX)
                     putFloat(KEY_Y, if (maxY == 0) 0f else params.y.toFloat() / maxY)
