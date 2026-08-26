@@ -50,10 +50,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         isDither = false
         hinting = Paint.HINTING_ON
     }
-    private val fadeRunnable = Runnable {
-        animate().alpha(idleOpacity).setDuration(if (reducedMotion) 0 else 450).start()
-    }
-
     init {
         contentDescription = "Ambient Companion. Tap for a message, drag to move, or long press for actions."
         isClickable = true
@@ -145,7 +141,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             scaleY = 1f
             rotation = 0f
             translationY = 0f
-            if (!dragging) scheduleIdleFade()
             return
         }
         animate()
@@ -153,7 +148,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             .scaleY(if (dragging) 1.08f else 1f)
             .alpha(1f)
             .setDuration(150)
-            .withEndAction { if (!dragging) scheduleIdleFade() }
             .start()
     }
 
@@ -165,10 +159,8 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
             scaleX = 1f
             scaleY = 1f
             translationY = 0f
-            scheduleIdleFade()
             return
         }
-        scheduleIdleFade()
         animate()
             .translationY(-resources.displayMetrics.density * 3f)
             .setDuration(1_800)
@@ -183,7 +175,6 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     }
 
     fun pauseAnimation() {
-        removeCallbacks(fadeRunnable)
         animate().cancel()
     }
 
@@ -284,14 +275,8 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     }
 
     fun wake() {
-        removeCallbacks(fadeRunnable)
         animate().cancel()
         alpha = 1f
-    }
-
-    private fun scheduleIdleFade() {
-        removeCallbacks(fadeRunnable)
-        postDelayed(fadeRunnable, IDLE_DELAY_MS)
     }
 
     private fun drawAccessory(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
@@ -354,6 +339,5 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     }
 
     companion object {
-        private const val IDLE_DELAY_MS = 2_500L
     }
 }
