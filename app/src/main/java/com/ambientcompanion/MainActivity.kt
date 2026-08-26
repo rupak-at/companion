@@ -121,6 +121,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         accessibilityEnabledState.value = isAssistiveServiceEnabled()
+        sendBroadcast(Intent(CompanionOverlayService.ACTION_APP_OPENED).setPackage(packageName))
     }
 
     private fun isAssistiveServiceEnabled(): Boolean {

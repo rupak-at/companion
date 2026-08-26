@@ -132,6 +132,7 @@ class CompanionOverlayService : AccessibilityService() {
     private var previewUntil = 0L
     private var receiverRegistered = false
     private var screenActive = true
+    private var lastAppGreetingAt = 0L
     private val systemReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
@@ -159,6 +160,7 @@ class CompanionOverlayService : AccessibilityService() {
                 ACTION_HIDE -> hideCompanion(true)
                 ACTION_RESET_POSITION -> resetPosition()
                 ACTION_PREVIEW -> intent.getStringExtra(EXTRA_STATE)?.let(::previewState)
+                ACTION_APP_OPENED -> showAppGreeting()
             }
         }
     }
@@ -516,6 +518,7 @@ class CompanionOverlayService : AccessibilityService() {
             view.startIdleAnimation()
         }
         isRunning = true
+        handler.postDelayed(::showAppGreeting, 500L)
     }
 
     private fun registerSystemReceiver() {
@@ -528,6 +531,10 @@ class CompanionOverlayService : AccessibilityService() {
             addAction(ACTION_CONTEXT_UPDATED)
             addAction(ACTION_SETTINGS_UPDATED)
             addAction(ACTION_CLEAR_ACTIVITY_DATA)
+            addAction(ACTION_HIDE)
+            addAction(ACTION_RESET_POSITION)
+            addAction(ACTION_PREVIEW)
+            addAction(ACTION_APP_OPENED)
         }
         ContextCompat.registerReceiver(this, systemReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         receiverRegistered = true
@@ -902,20 +909,17 @@ class CompanionOverlayService : AccessibilityService() {
         val screen = screenSize()
         val margin = dp(16)
         val gap = dp(10)
+        val iconCenterX = companionParams.x + companionParams.width / 2
+        val placeToRight = iconCenterX < screen.x / 2
         val bubble = TextView(this).apply {
             text = message
             textSize = 14.5f
             setTextColor(Color.rgb(255, 247, 239))
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             setLineSpacing(dp(3).toFloat(), 1f)
-            setPadding(dp(20), dp(15), dp(20), dp(16))
+            setPadding(dp(20), dp(21), dp(20), dp(22))
             maxLines = 4
             ellipsize = android.text.TextUtils.TruncateAt.END
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.argb(250, 35, 27, 39))
-                cornerRadius = dp(22).toFloat()
-                setStroke(dp(1), Color.argb(150, 102, 76, 91))
-            }
             elevation = dp(12).toFloat()
             alpha = 0f
             scaleX = 0.94f
@@ -930,9 +934,16 @@ class CompanionOverlayService : AccessibilityService() {
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         val bubbleHeight = bubble.measuredHeight
-        val iconCenterX = companionParams.x + companionParams.width / 2
-        val placeToRight = iconCenterX < screen.x / 2
         val placeAbove = companionParams.y >= bubbleHeight + gap + margin
+        bubble.background = CompanionMessageDrawable(
+            pointerX = if (placeToRight) dp(18).toFloat() else width - dp(18).toFloat(),
+            pointerAtTop = !placeAbove,
+            tailHeight = dp(10).toFloat(),
+            cornerRadius = dp(22).toFloat(),
+            fillColor = Color.argb(250, 35, 27, 39),
+            strokeColor = Color.argb(150, 102, 76, 91),
+            strokeWidth = dp(1).toFloat(),
+        )
         val targetX = if (placeToRight) {
             companionParams.x + companionParams.width - dp(14)
         } else {
@@ -963,6 +974,15 @@ class CompanionOverlayService : AccessibilityService() {
             runCatching { windowManager.removeView(bubble) }
             if (bubbleView === bubble) bubbleView = null
         }.start()
+    }
+
+    private fun showAppGreeting() {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (!settings.messagesEnabled || companionView == null ||
+            (lastAppGreetingAt != 0L && now - lastAppGreetingAt < APP_GREETING_COOLDOWN_MS)
+        ) return
+        lastAppGreetingAt = now
+        showMessage(contextMessages.random())
     }
 
     private fun showQuickMenu() {
@@ -1176,9 +1196,11 @@ class CompanionOverlayService : AccessibilityService() {
         const val EXTRA_STATE = "companion_state"
         const val ACTION_HIDE = "com.ambientcompanion.action.HIDE"
         const val ACTION_RESET_POSITION = "com.ambientcompanion.action.RESET_POSITION"
+        const val ACTION_APP_OPENED = "com.ambientcompanion.action.APP_OPENED"
         private const val PREVIEW_DURATION_MS = 10_000L
         private const val TAP_WINDOW_MS = 360L
         private const val EVENT_DURATION_MS = 2_500L
+        private const val APP_GREETING_COOLDOWN_MS = 30_000L
         private val contextMessages = listOf("You've got this ✨", "Nice to see you!", "Hope your day's going well")
         private val playfulMessages = listOf("Hey! 😳", "That tickles!", "I'm awake 👀")
 
