@@ -70,13 +70,21 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
-        mascotBounds.set(
-            motionSafeInset,
-            motionSafeInset,
-            width.toFloat() - motionSafeInset,
-            height.toFloat() - motionSafeInset,
-        )
+        updateMascotBounds()
         updateShader(width, height)
+    }
+
+    private fun updateMascotBounds() {
+        if (width == 0 || height == 0) return
+        val bitmap = if (appearance == CompanionAppearance.ARTWORK) artwork else mascot
+        val availableWidth = width - motionSafeInset * 2f
+        val availableHeight = height - motionSafeInset * 2f
+        val scale = minOf(availableWidth / bitmap.width, availableHeight / bitmap.height)
+        val renderedWidth = bitmap.width * scale
+        val renderedHeight = bitmap.height * scale
+        val left = (width - renderedWidth) / 2f
+        val top = (height - renderedHeight) / 2f
+        mascotBounds.set(left, top, left + renderedWidth, top + renderedHeight)
     }
 
     private fun updateShader(width: Int = this.width, height: Int = this.height) {
@@ -287,6 +295,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         this.idleOpacity = idleOpacity.coerceIn(.35f, 1f)
         if (idleDimmed) animate().alpha(minOf(this.idleOpacity, displayOpacityLimit)).setDuration(if (reducedMotion) 0 else 180).start()
         this.reducedMotion = reducedMotion
+        updateMascotBounds()
         if (appearance == CompanionAppearance.EMOJI) {
             animate().cancel()
             scaleX = 1f

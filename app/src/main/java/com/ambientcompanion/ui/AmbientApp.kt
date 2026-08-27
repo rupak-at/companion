@@ -632,19 +632,34 @@ private fun AppProfiles(
 }
 @Composable private fun ArtworkPicker(selected: CompanionArtwork, select: (CompanionArtwork) -> Unit) = PremiumCard {
     Text("Choose artwork", color = Ink, fontWeight = FontWeight.SemiBold)
+    Text("Each companion keeps its natural shape", color = MutedInk, fontSize = 12.sp)
     Spacer(Modifier.height(14.dp))
     CompanionArtwork.entries.chunked(2).forEach { row ->
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             row.forEach { artwork ->
+                val isSelected = artwork == selected
                 Surface(
-                    modifier = Modifier.weight(1f).height(118.dp).clickable { select(artwork) },
-                    color = if (artwork == selected) Color(0xFFFFE8C4) else Porcelain,
-                    shape = RoundedCornerShape(20.dp),
-                    border = if (artwork == selected) androidx.compose.foundation.BorderStroke(2.dp, AmberDeep) else null,
+                    modifier = Modifier.weight(1f).height(132.dp).clickable { select(artwork) },
+                    color = if (isSelected) Color(0xFFFFF1D8) else Color.White,
+                    shape = RoundedCornerShape(24.dp),
+                    shadowElevation = if (isSelected) 7.dp else 2.dp,
+                    border = androidx.compose.foundation.BorderStroke(
+                        if (isSelected) 1.5.dp else 1.dp,
+                        if (isSelected) AmberDeep else Color(0xFFEDE5DF),
+                    ),
                 ) {
-                    Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Image(painterResource(artwork.thumbnailRes()), artwork.label, Modifier.size(72.dp), contentScale = ContentScale.Fit)
-                        Text(artwork.label, color = Ink, fontSize = 11.sp, maxLines = 1)
+                    Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Box(Modifier.fillMaxWidth().height(82.dp), contentAlignment = Alignment.Center) {
+                            Box(Modifier.size(68.dp).background(if (isSelected) Color(0x33FFB86B) else Color(0x0FA06B45), CircleShape))
+                            Image(
+                                painterResource(artwork.thumbnailRes()),
+                                artwork.label,
+                                Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit,
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(artwork.label, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                     }
                 }
             }
