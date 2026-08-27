@@ -21,6 +21,8 @@ import com.ambientcompanion.quicksettings.CompanionTileService
 import com.ambientcompanion.ui.AmbientApp
 import com.ambientcompanion.ui.AppScreen
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import com.ambientcompanion.domain.screen.ScreenContext
@@ -36,6 +38,7 @@ class MainActivity : ComponentActivity() {
     private var screenState = androidx.compose.runtime.mutableStateOf(AppScreen.HOME)
     private var accessibilityEnabledState = androidx.compose.runtime.mutableStateOf(false)
     private var screenContextState = androidx.compose.runtime.mutableStateOf(ScreenContext.EMPTY)
+    private var installedAppsState = androidx.compose.runtime.mutableStateOf(emptyList<InstalledAppEntry>())
     private var pendingBluetoothSettings: UserSettings? = null
 
     private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -63,14 +66,16 @@ class MainActivity : ComponentActivity() {
             }
         }
         refreshContext()
-        val launchableApps = installedApps()
+        lifecycleScope.launch {
+            installedAppsState.value = withContext(Dispatchers.IO) { installedApps() }
+        }
         setContent {
             AmbientApp(
                 settings = settingsState.value,
                 settingsLoaded = settingsLoadedState.value,
                 snapshot = snapshotState.value,
                 screenContext = screenContextState.value,
-                installedApps = launchableApps,
+                installedApps = installedAppsState.value,
                 screen = screenState.value,
                 hasAccessibilityPermission = accessibilityEnabledState.value,
                 overlayRunning = CompanionOverlayService.isRunning,
