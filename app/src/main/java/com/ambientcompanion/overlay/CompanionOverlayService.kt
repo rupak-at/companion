@@ -174,7 +174,13 @@ class CompanionOverlayService : AccessibilityService() {
                 Intent.ACTION_CONFIGURATION_CHANGED -> { clampToScreen(); refreshContext() }
                 Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED -> refreshContext()
                 ACTION_CONTEXT_UPDATED -> refreshContext(true)
-                ACTION_SETTINGS_UPDATED -> syncVisibility()
+                ACTION_SETTINGS_UPDATED -> {
+                    companionView?.let {
+                        it.wake()
+                        scheduleIdleFade()
+                    }
+                    syncVisibility()
+                }
                 ACTION_CLEAR_ACTIVITY_DATA -> clearActivityData()
                 ACTION_HIDE -> hideCompanion(true)
                 ACTION_RESET_POSITION -> resetPosition()
