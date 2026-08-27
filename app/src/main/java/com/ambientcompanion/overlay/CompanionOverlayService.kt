@@ -155,6 +155,7 @@ class CompanionOverlayService : AccessibilityService() {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
                     handler.removeCallbacks(idleFadeRunnable)
+                    handler.removeCallbacks(boundaryRefresh)
                     screenActive = false
                     eventQueue.clear()
                     eventInFlight = false
@@ -211,8 +212,12 @@ class CompanionOverlayService : AccessibilityService() {
     private fun syncVisibility() = serviceScope.launch {
         settings = app.preferences.currentSettings()
         if (settings.companionEnabled && settings.hiddenUntil <= System.currentTimeMillis()) {
-            if (companionView == null) showCompanion()
-            applyOverlaySettings()
+            if (companionView == null) {
+                showCompanion()
+                refreshContext()
+            } else {
+                applyOverlaySettings()
+            }
         } else {
             hideCompanion()
             if (settings.companionEnabled && settings.hiddenUntil > System.currentTimeMillis()) {
@@ -225,8 +230,14 @@ class CompanionOverlayService : AccessibilityService() {
     }
 
     private fun hideCompanion(updatePreference: Boolean = false) {
+        handler.removeCallbacks(idleFadeRunnable)
+        handler.removeCallbacks(boundaryRefresh)
+        handler.removeCallbacks(screenContextRefresh)
         handler.removeCallbacks(artworkCycleRunnable)
         artworkCycleScheduled = false
+        positionAnimator?.cancel()
+        positionAnimator = null
+        companionView?.pauseAnimation()
         companionView?.let { runCatching { windowManager.removeView(it) } }
         bubbleView?.let { runCatching { windowManager.removeView(it) } }
         quickMenuView?.let { runCatching { windowManager.removeView(it) } }
