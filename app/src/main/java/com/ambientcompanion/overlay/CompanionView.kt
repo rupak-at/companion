@@ -35,6 +35,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     private var artwork = BitmapFactory.decodeResource(resources, selectedArtwork.drawableRes())
     private val mascotPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val mascotBounds = RectF()
+    private val motionSafeInset = resources.displayMetrics.density * 3f
     private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val facePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(58, 46, 56)
@@ -69,7 +70,12 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
-        mascotBounds.set(0f, 0f, width.toFloat(), height.toFloat())
+        mascotBounds.set(
+            motionSafeInset,
+            motionSafeInset,
+            width.toFloat() - motionSafeInset,
+            height.toFloat() - motionSafeInset,
+        )
         updateShader(width, height)
     }
 
