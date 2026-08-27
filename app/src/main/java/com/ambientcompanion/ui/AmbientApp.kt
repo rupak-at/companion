@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.BackHandler
 import com.ambientcompanion.data.preferences.CompanionAppearance
 import com.ambientcompanion.data.preferences.CompanionArtwork
 import com.ambientcompanion.data.preferences.AppPreferences
@@ -60,6 +61,13 @@ import kotlin.math.roundToInt
 enum class AppScreen { HOME, CUSTOMIZE, SETTINGS, SCREEN_AWARENESS, WELLBEING, PRIVACY, APP_PROFILES, PREVIEW, DEBUG }
 data class InstalledAppEntry(val packageName: String, val label: String, val profile: AppProfile)
 
+fun AppScreen.parent(): AppScreen? = when (this) {
+    AppScreen.HOME -> null
+    AppScreen.CUSTOMIZE, AppScreen.SETTINGS, AppScreen.PREVIEW -> AppScreen.HOME
+    AppScreen.SCREEN_AWARENESS, AppScreen.WELLBEING, AppScreen.PRIVACY,
+    AppScreen.APP_PROFILES, AppScreen.DEBUG -> AppScreen.SETTINGS
+}
+
 @Composable
 fun AmbientApp(
     settings: UserSettings,
@@ -83,6 +91,9 @@ fun AmbientApp(
     onClearActivityData: () -> Unit,
     onPreviewState: (CompanionState) -> Unit,
 ) {
+    BackHandler(enabled = screen.parent() != null) {
+        screen.parent()?.let(onNavigate)
+    }
     MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(primary = Aubergine, surface = Porcelain)) {
         if (!settingsLoaded) {
             LaunchScreen()
