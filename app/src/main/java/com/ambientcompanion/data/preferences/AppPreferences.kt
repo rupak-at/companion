@@ -49,6 +49,7 @@ enum class CompanionArtwork(val label: String) {
     PURPLE_PHOENIX("Purple phoenix"),
     PURPLE_DRAGON("Purple dragon"),
     PURPLE_PANTHER("Purple panther"),
+    PURPLE_BULL("Purple bull"),
     ROBOT_WAVE("Nova robot"),
     ROBOT_DARK("Midnight robot"),
     CYBER_CAT("Cyber cat"),

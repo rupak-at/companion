@@ -26,6 +26,7 @@ fun CompanionArtwork.drawableRes(): Int = when (this) {
     CompanionArtwork.PURPLE_PHOENIX -> R.drawable.companion_purple_phoenix
     CompanionArtwork.PURPLE_DRAGON -> R.drawable.companion_purple_dragon
     CompanionArtwork.PURPLE_PANTHER -> R.drawable.companion_purple_panther
+    CompanionArtwork.PURPLE_BULL -> R.drawable.companion_purple_bull
     CompanionArtwork.ROBOT_WAVE -> R.drawable.companion_robot_wave
     CompanionArtwork.ROBOT_DARK -> R.drawable.companion_robot_dark
     CompanionArtwork.CYBER_CAT -> R.drawable.companion_cyber_cat
@@ -55,6 +56,7 @@ fun CompanionArtwork.thumbnailRes(): Int = when (this) {
     CompanionArtwork.PURPLE_PHOENIX -> R.drawable.companion_thumb_purple_phoenix
     CompanionArtwork.PURPLE_DRAGON -> R.drawable.companion_thumb_purple_dragon
     CompanionArtwork.PURPLE_PANTHER -> R.drawable.companion_thumb_purple_panther
+    CompanionArtwork.PURPLE_BULL -> R.drawable.companion_thumb_purple_bull
     CompanionArtwork.ROBOT_WAVE -> R.drawable.companion_thumb_robot_wave
     CompanionArtwork.ROBOT_DARK -> R.drawable.companion_thumb_robot_dark
     CompanionArtwork.CYBER_CAT -> R.drawable.companion_thumb_cyber_cat
