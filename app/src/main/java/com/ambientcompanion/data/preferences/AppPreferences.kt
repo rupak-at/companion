@@ -39,6 +39,21 @@ enum class CompanionArtwork(val label: String) {
     GIRL_YELLOW_DRESS("Yellow dress"),
     GIRL_MINT_HOODIE("Mint hoodie"),
     PANDA("Panda"),
+    SPACE_PANDA("Space panda"),
+    BABY_DRAGON("Baby dragon"),
+    BLACK_CAT("Cosmic cat"),
+    TREE_SPIRIT("Tree spirit"),
+    GOLDEN_DRAGON("Golden dragon"),
+    GOLDEN_PHOENIX("Golden phoenix"),
+    GOLDEN_PANTHER("Golden panther"),
+    PURPLE_PHOENIX("Purple phoenix"),
+    PURPLE_DRAGON("Purple dragon"),
+    PURPLE_PANTHER("Purple panther"),
+    ROBOT_WAVE("Nova robot"),
+    ROBOT_DARK("Midnight robot"),
+    CYBER_CAT("Cyber cat"),
+    COSMIC_DRAGON("Cosmic dragon"),
+    ROBOT_ORBIT("Orbit robot"),
 }
 
 data class UserSettings(
