@@ -150,7 +150,6 @@ class MainActivity : ComponentActivity() {
     private fun completeOnboarding() {
         lifecycleScope.launch {
             app.preferences.updateSettings { it.copy(onboardingComplete = true, companionEnabled = true) }
-            sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
         }
     }
 
@@ -177,7 +176,6 @@ class MainActivity : ComponentActivity() {
     private fun persistSettings(next: UserSettings) {
         lifecycleScope.launch {
             app.preferences.updateSettings { next }
-            sendBroadcast(Intent(CompanionOverlayService.ACTION_SETTINGS_UPDATED).setPackage(packageName))
         }
     }
 

@@ -212,7 +212,7 @@ class CompanionOverlayService : AccessibilityService() {
         settings = app.preferences.currentSettings()
         if (settings.companionEnabled && settings.hiddenUntil <= System.currentTimeMillis()) {
             if (companionView == null) showCompanion()
-            refreshContext()
+            applyOverlaySettings()
         } else {
             hideCompanion()
             if (settings.companionEnabled && settings.hiddenUntil > System.currentTimeMillis()) {
@@ -571,23 +571,33 @@ class CompanionOverlayService : AccessibilityService() {
     private fun refreshContext(force: Boolean = false) {
         serviceScope.launch {
             settings = app.preferences.currentSettings()
-            syncArtworkCycle()
-            resizeCompanion(settings.companionSizeDp)
-            val device = app.deviceContextSource.state.value
-            val effectiveAppearance = if (settings.resourceMode == ResourceMode.MINIMAL) com.ambientcompanion.data.preferences.CompanionAppearance.EMOJI else settings.companionAppearance
-            companionView?.configureAppearance(
-                effectiveAppearance,
-                settings.selectedArtwork,
-                settings.selectedEmoji,
-                settings.idleOpacity,
-                settings.reducedMotion || device.isPowerSaveMode || settings.resourceMode != ResourceMode.NORMAL,
-            )
-            companionView?.let { renderer = if (effectiveAppearance == com.ambientcompanion.data.preferences.CompanionAppearance.EMOJI) EmojiRenderer(it) else AnimatedAssetRenderer(it) }
-            companionView?.setTheme(settings.theme)
+            applyOverlaySettings()
             val snapshot = app.contextRepository.refresh(force)
             if (android.os.SystemClock.uptimeMillis() >= previewUntil) applyAmbientContext(snapshot.context)
-            if (settings.screenAwarenessEnabled) applyScreenBehavior(currentScreenContext)
         }
+    }
+
+    private fun applyOverlaySettings() {
+        syncArtworkCycle()
+        resizeCompanion(settings.companionSizeDp)
+        val device = app.deviceContextSource.state.value
+        val effectiveAppearance = if (settings.resourceMode == ResourceMode.MINIMAL) {
+            CompanionAppearance.EMOJI
+        } else {
+            settings.companionAppearance
+        }
+        companionView?.configureAppearance(
+            effectiveAppearance,
+            settings.selectedArtwork,
+            settings.selectedEmoji,
+            settings.idleOpacity,
+            settings.reducedMotion || device.isPowerSaveMode || settings.resourceMode != ResourceMode.NORMAL,
+        )
+        companionView?.let {
+            renderer = if (effectiveAppearance == CompanionAppearance.EMOJI) EmojiRenderer(it) else AnimatedAssetRenderer(it)
+        }
+        companionView?.setTheme(settings.theme)
+        if (settings.screenAwarenessEnabled) applyScreenBehavior(currentScreenContext)
     }
 
     private fun observeDeviceContext() = serviceScope.launch {
