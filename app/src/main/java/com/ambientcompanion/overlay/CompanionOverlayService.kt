@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.graphics.Point
 import android.graphics.PixelFormat
 import android.graphics.Color
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -30,6 +31,7 @@ import com.ambientcompanion.AmbientApplication
 import com.ambientcompanion.data.preferences.UserSettings
 import com.ambientcompanion.data.preferences.CompanionAppearance
 import com.ambientcompanion.data.preferences.CompanionArtwork
+import com.ambientcompanion.ui.drawableRes
 import com.ambientcompanion.accessibility.AssistiveAction
 import com.ambientcompanion.domain.message.MessageEngine
 import com.ambientcompanion.domain.message.MessagePackId
@@ -78,6 +80,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
 import java.time.LocalTime
 import java.time.ZonedDateTime
@@ -237,8 +240,10 @@ class CompanionOverlayService : AccessibilityService() {
         artworkCycleScheduled = false
         positionAnimator?.cancel()
         positionAnimator = null
-        companionView?.pauseAnimation()
-        companionView?.let { runCatching { windowManager.removeView(it) } }
+        val view = companionView
+        view?.pauseAnimation()
+        view?.let { runCatching { windowManager.removeView(it) } }
+        view?.dispose()
         bubbleView?.let { runCatching { windowManager.removeView(it) } }
         quickMenuView?.let { runCatching { windowManager.removeView(it) } }
         companionView = null; bubbleView = null; quickMenuView = null; isRunning = false
@@ -588,27 +593,41 @@ class CompanionOverlayService : AccessibilityService() {
         }
     }
 
-    private fun applyOverlaySettings() {
+    private suspend fun applyOverlaySettings() {
+        val requestedSettings = settings
         syncArtworkCycle()
-        resizeCompanion(settings.companionSizeDp)
+        resizeCompanion(requestedSettings.companionSizeDp)
         val device = app.deviceContextSource.state.value
-        val effectiveAppearance = if (settings.resourceMode == ResourceMode.MINIMAL) {
+        val effectiveAppearance = if (requestedSettings.resourceMode == ResourceMode.MINIMAL) {
             CompanionAppearance.EMOJI
         } else {
-            settings.companionAppearance
+            requestedSettings.companionAppearance
         }
-        companionView?.configureAppearance(
+        val targetView = companionView
+        val artworkBitmap = targetView
+            ?.takeIf { effectiveAppearance == CompanionAppearance.ARTWORK && it.needsArtwork(requestedSettings.selectedArtwork) }
+            ?.let {
+                withContext(Dispatchers.Default) {
+                    BitmapFactory.decodeResource(resources, requestedSettings.selectedArtwork.drawableRes())
+                }
+            }
+        if (settings != requestedSettings || companionView !== targetView) {
+            artworkBitmap?.takeIf { !it.isRecycled }?.recycle()
+            return
+        }
+        targetView?.configureAppearance(
             effectiveAppearance,
-            settings.selectedArtwork,
-            settings.selectedEmoji,
-            settings.idleOpacity,
-            settings.reducedMotion || device.isPowerSaveMode || settings.resourceMode != ResourceMode.NORMAL,
+            requestedSettings.selectedArtwork,
+            artworkBitmap,
+            requestedSettings.selectedEmoji,
+            requestedSettings.idleOpacity,
+            requestedSettings.reducedMotion || device.isPowerSaveMode || requestedSettings.resourceMode != ResourceMode.NORMAL,
         )
-        companionView?.let {
+        targetView?.let {
             renderer = if (effectiveAppearance == CompanionAppearance.EMOJI) EmojiRenderer(it) else AnimatedAssetRenderer(it)
         }
-        companionView?.setTheme(settings.theme)
-        if (settings.screenAwarenessEnabled) applyScreenBehavior(currentScreenContext)
+        targetView?.setTheme(requestedSettings.theme)
+        if (requestedSettings.screenAwarenessEnabled) applyScreenBehavior(currentScreenContext)
     }
 
     private fun observeDeviceContext() = serviceScope.launch {

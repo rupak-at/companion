@@ -3,6 +3,7 @@ package com.ambientcompanion.overlay
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.RadialGradient
@@ -32,7 +33,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
     private var accessory: AccessoryId? = null
     private var theme: String = "default"
     private val mascot = BitmapFactory.decodeResource(resources, R.drawable.companion_mascot)
-    private var artwork = BitmapFactory.decodeResource(resources, selectedArtwork.drawableRes())
+    private var artwork: Bitmap? = null
     private val mascotPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val mascotBounds = RectF()
     private val motionSafeInset = resources.displayMetrics.density * 3f
@@ -76,7 +77,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
 
     private fun updateMascotBounds() {
         if (width == 0 || height == 0) return
-        val bitmap = if (appearance == CompanionAppearance.ARTWORK) artwork else mascot
+        val bitmap = if (appearance == CompanionAppearance.ARTWORK) artwork ?: mascot else mascot
         val availableWidth = width - motionSafeInset * 2f
         val availableHeight = height - motionSafeInset * 2f
         val scale = minOf(availableWidth / bitmap.width, availableHeight / bitmap.height)
@@ -112,7 +113,7 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         }
         if (appearance == CompanionAppearance.ARTWORK) {
             mascotPaint.colorFilter = null
-            canvas.drawBitmap(artwork, null, mascotBounds, mascotPaint)
+            canvas.drawBitmap(artwork ?: mascot, null, mascotBounds, mascotPaint)
             return
         }
         val cx = width / 2f
@@ -276,20 +277,23 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
 
     fun configureAppearance(
         appearance: CompanionAppearance,
-        artwork: CompanionArtwork,
+        selectedArtwork: CompanionArtwork,
+        artworkBitmap: Bitmap?,
         emoji: String,
         idleOpacity: Float,
         reducedMotion: Boolean,
     ) {
         val normalizedEmoji = emoji.ifBlank { "😊" }
         val appearanceChanged = this.appearance != appearance ||
-            selectedArtwork != artwork ||
+            this.selectedArtwork != selectedArtwork ||
             this.emoji != normalizedEmoji ||
             this.reducedMotion != reducedMotion
         this.appearance = appearance
-        if (artwork != selectedArtwork) {
-            selectedArtwork = artwork
-            this.artwork = BitmapFactory.decodeResource(resources, artwork.drawableRes())
+        if (appearance == CompanionAppearance.ARTWORK && needsArtwork(selectedArtwork)) {
+            val nextArtwork = artworkBitmap ?: BitmapFactory.decodeResource(resources, selectedArtwork.drawableRes())
+            artwork?.takeIf { it !== nextArtwork && !it.isRecycled }?.recycle()
+            this.selectedArtwork = selectedArtwork
+            artwork = nextArtwork
         }
         this.emoji = normalizedEmoji
         this.idleOpacity = idleOpacity.coerceIn(.35f, 1f)
@@ -305,11 +309,20 @@ class CompanionView(context: Context) : View(context), CompanionRenderer {
         }
         contentDescription = when (appearance) {
             CompanionAppearance.EMOJI -> "$emoji floating emoji. Tap for a message, drag to move, or long press for actions."
-            CompanionAppearance.ARTWORK -> "${artwork.label} floating companion. Tap for a message, drag to move, or long press for actions."
+            CompanionAppearance.ARTWORK -> "${selectedArtwork.label} floating companion. Tap for a message, drag to move, or long press for actions."
             CompanionAppearance.AMBIENT -> "Ambient Companion. Tap for a message, drag to move, or long press for actions."
         }
         invalidate()
         if (appearanceChanged) startIdleAnimation(reducedMotion)
+    }
+
+    fun needsArtwork(candidate: CompanionArtwork): Boolean = artwork == null || selectedArtwork != candidate
+
+    fun dispose() {
+        animate().cancel()
+        artwork?.takeIf { !it.isRecycled }?.recycle()
+        artwork = null
+        if (!mascot.isRecycled) mascot.recycle()
     }
 
     fun wake() {
