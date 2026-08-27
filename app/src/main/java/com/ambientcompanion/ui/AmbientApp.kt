@@ -686,21 +686,32 @@ private fun appearanceLabel(settings: UserSettings): String = when (settings.com
     CompanionAppearance.EMOJI -> "Emoji · ${settings.selectedEmoji}"
 }
 @Composable private fun OpacityControl(value: Float, update: (Float) -> Unit) = PremiumCard {
-    SettingRow("Inactive opacity", "Fades to ${(value * 100).roundToInt()}% after 2.5 seconds") { Text("${(value * 100).roundToInt()}%", color = Aubergine, fontWeight = FontWeight.Bold) }
-    Slider(value = value, onValueChange = update, valueRange = .35f..1f, steps = 12, colors = SliderDefaults.colors(thumbColor = Aubergine, activeTrackColor = Aubergine, inactiveTrackColor = Color(0xFFE4DCE1)))
+    var draft by remember(value) { mutableFloatStateOf(value) }
+    val percent = (draft * 100).roundToInt()
+    SettingRow("Inactive opacity", "Fades to $percent% after 2.5 seconds") { Text("$percent%", color = Aubergine, fontWeight = FontWeight.Bold) }
+    Slider(
+        value = draft,
+        onValueChange = { draft = it },
+        onValueChangeFinished = { update(draft) },
+        valueRange = .35f..1f,
+        steps = 12,
+        colors = SliderDefaults.colors(thumbColor = Aubergine, activeTrackColor = Aubergine, inactiveTrackColor = Color(0xFFE4DCE1)),
+    )
 }
 @Composable private fun SizeControl(value: Int, update: (Int) -> Unit) = PremiumCard {
+    var draft by remember(value) { mutableIntStateOf(value) }
     val label = when {
-        value <= 60 -> "Very small"
-        value <= 84 -> "Small"
-        value <= 112 -> "Medium"
-        value <= 140 -> "Large"
+        draft <= 60 -> "Very small"
+        draft <= 84 -> "Small"
+        draft <= 112 -> "Medium"
+        draft <= 140 -> "Large"
         else -> "Very large"
     }
-    SettingRow("Floating icon size", "$label · ${value}dp") { Text("${value}dp", color = Aubergine, fontWeight = FontWeight.Bold) }
+    SettingRow("Floating icon size", "$label · ${draft}dp") { Text("${draft}dp", color = Aubergine, fontWeight = FontWeight.Bold) }
     Slider(
-        value = value.toFloat(),
-        onValueChange = { update(it.roundToInt()) },
+        value = draft.toFloat(),
+        onValueChange = { draft = it.roundToInt() },
+        onValueChangeFinished = { update(draft) },
         valueRange = AppPreferences.MIN_COMPANION_SIZE_DP.toFloat()..AppPreferences.MAX_COMPANION_SIZE_DP.toFloat(),
         steps = 23,
         colors = SliderDefaults.colors(thumbColor = Aubergine, activeTrackColor = Aubergine, inactiveTrackColor = Color(0xFFE4DCE1)),
@@ -725,9 +736,23 @@ private fun appearanceLabel(settings: UserSettings): String = when (settings.com
 }
 @Composable private fun TimeRangeCard(title: String, start: Int, end: Int, update: (Int, Int) -> Unit) = PremiumCard {
     fun label(minutes: Int) = "%02d:%02d".format(minutes / 60, minutes % 60)
-    SettingRow(title, "${label(start)}–${label(end)}") { Text(label(start), color = Aubergine, fontWeight = FontWeight.Bold) }
-    Slider(start.toFloat(), { update((it / 15).roundToInt() * 15, end) }, valueRange = 0f..1425f, steps = 94)
-    Slider(end.toFloat(), { update(start, (it / 15).roundToInt() * 15) }, valueRange = 0f..1425f, steps = 94)
+    var draftStart by remember(start) { mutableIntStateOf(start) }
+    var draftEnd by remember(end) { mutableIntStateOf(end) }
+    SettingRow(title, "${label(draftStart)}–${label(draftEnd)}") { Text(label(draftStart), color = Aubergine, fontWeight = FontWeight.Bold) }
+    Slider(
+        draftStart.toFloat(),
+        { draftStart = (it / 15).roundToInt() * 15 },
+        onValueChangeFinished = { update(draftStart, draftEnd) },
+        valueRange = 0f..1425f,
+        steps = 94,
+    )
+    Slider(
+        draftEnd.toFloat(),
+        { draftEnd = (it / 15).roundToInt() * 15 },
+        onValueChangeFinished = { update(draftStart, draftEnd) },
+        valueRange = 0f..1425f,
+        steps = 94,
+    )
 }
 @Composable private fun WeekendPicker(selected: Set<DayOfWeek>, update: (Set<DayOfWeek>) -> Unit) = PremiumCard {
     Text("Weekend days", color = Ink, fontWeight = FontWeight.SemiBold)
