@@ -39,6 +39,17 @@
             android:excludeFromRecents="true"
             android:exported="false"
             android:theme="@style/Theme.AmbientCompanion.Transparent" />
+        <activity
+            android:name=".download.share.ShareReceiverActivity"
+            android:exported="true"
+            android:label="Download with Ambient"
+            android:theme="@style/Theme.AmbientCompanion">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
 
         <service
             android:name=".overlay.CompanionOverlayService"
