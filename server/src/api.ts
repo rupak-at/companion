@@ -20,9 +20,6 @@ app.post("/api/v1/downloads", async (request, reply) => {
   try { url = await validatePublicUrl(parsed.data.url); }
   catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
   const provider = classifyUrl(url)!;
-  if (provider === "TIKTOK" || provider === "INSTAGRAM") {
-    return reply.code(422).send({ error: "PROVIDER_NOT_CONFIGURED", message: "This provider needs an approved extractor; CAPTCHA bypass is not supported." });
-  }
   const active = await prisma.downloadJob.count({ where: { userId, status: { in: ["QUEUED", "PROCESSING"] } } });
   if (active >= 2) return reply.code(429).send({ error: "TOO_MANY_ACTIVE_JOBS" });
 
@@ -39,7 +36,7 @@ app.get<{ Params: { jobId: string } }>("/api/v1/downloads/:jobId", async (reques
   return {
     jobId: job.id, status: job.status, progress: job.progress, provider: job.provider, title: job.title,
     downloadUrl: job.status === "READY" ? `${config.PUBLIC_BASE_URL}/api/v1/downloads/${job.id}/file` : undefined,
-    expiresAt: job.expiresAt,
+    expiresAt: job.expiresAt, errorCode: job.errorCode, errorMessage: job.errorMessage,
   };
 });
 

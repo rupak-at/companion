@@ -1,6 +1,8 @@
 # Ambient download server
 
-This service uses Supabase Auth, Supabase Postgres through Prisma, and Redis/BullMQ. V1 intentionally accepts only direct HTTPS media URLs. Provider adapters can be added only when they use a permitted, stable API or extractor; CAPTCHA solving and browser-session scraping are not part of this service.
+This service uses Supabase Auth, Supabase Postgres through Prisma, and Redis/BullMQ. It accepts direct HTTPS media URLs and runs TikTok/Instagram links through a pinned `yt-dlp` provider adapter. CAPTCHA solving, cookies, credentials, private-account access, and browser-session scraping are not part of this service.
+
+If a provider requests login, bot confirmation, or CAPTCHA, the job becomes `FAILED` with `errorCode: HUMAN_VERIFICATION_REQUIRED`. The client should explain that verification cannot be automated and suggest retrying later or sharing a direct media URL. This avoids making the backend dependent on SaveFrom or another CAPTCHA-protected webpage.
 
 1. Create a Supabase project and copy `.env.example` to `.env`.
 2. Use the Supabase transaction-pooler URL for `DATABASE_URL` and the session/direct URL for `DIRECT_URL`.
