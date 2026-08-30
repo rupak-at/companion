@@ -8,3 +8,7 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+# Download backend
+server/node_modules/
+server/dist/
+server/.env

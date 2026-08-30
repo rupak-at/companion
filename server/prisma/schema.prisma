@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum DownloadStatus {
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
+  EXPIRED
+}
+
+enum LinkProvider {
+  DIRECT_VIDEO
+  DIRECT_IMAGE
+  TIKTOK
+  INSTAGRAM
+}
+
+model DownloadJob {
+  id           String         @id @default(uuid()) @db.Uuid
+  userId       String         @db.Uuid
+  sourceUrl    String
+  provider     LinkProvider
+  status       DownloadStatus @default(QUEUED)
+  progress     Int            @default(0)
+  title        String?
+  mimeType     String?
+  fileName     String?
+  filePath     String?
+  sizeBytes    BigInt?
+  errorCode    String?
+  errorMessage String?
+  expiresAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+}

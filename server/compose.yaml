@@ -1,0 +1,57 @@
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    command: ["node", "dist/api.js"]
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      DOWNLOAD_DIR: /var/lib/ambient-downloads
+    ports:
+      - "127.0.0.1:${PORT:-8080}:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - downloads:/var/lib/ambient-downloads
+    security_opt:
+      - no-new-privileges:true
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["node", "dist/worker.js"]
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      DOWNLOAD_DIR: /var/lib/ambient-downloads
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - downloads:/var/lib/ambient-downloads
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  downloads:
+  redis-data:
