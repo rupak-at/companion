@@ -3,7 +3,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 const MAX_BYTES = 250 * 1024 * 1024;
-const VERIFY_PATTERNS = /captcha|confirm you(?:'re| are) not a bot|login required|sign in to confirm|checkpoint required/i;
+const VERIFY_PATTERNS = /captcha|confirm you(?:'re| are) not a bot|login required|sign in to confirm|checkpoint required|unexpected response from webpage request/i;
 
 export class ExtractorError extends Error {
   constructor(public readonly code: string, message: string) {

@@ -18,4 +18,4 @@ docker compose run --rm api npx prisma migrate deploy
 
 The Android app should send the signed-in user's Supabase access token as `Authorization: Bearer <token>`. Never put the Supabase service-role key in the Android app.
 
-Production deployment still needs TLS, IP/user rate limiting at the reverse proxy, a cleanup task for expired rows/files, and an authenticated file-streaming route. Do not expose the worker directory directly.
+Production deployment still needs TLS, IP/user rate limiting at the reverse proxy, and a scheduled cleanup task for expired rows/files. Files are streamed only through the authenticated job-owner route; do not expose the worker directory directly.
