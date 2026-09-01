@@ -10,8 +10,13 @@ datasource db {
 
 enum DownloadStatus {
   QUEUED
+  WAITING_FOR_LOCAL_RUNNER
+  CLAIMED
   PROCESSING
+  WAITING_FOR_USER
+  DOWNLOADING
   READY
+  COMPLETED
   FAILED
   EXPIRED
 }
@@ -37,10 +42,15 @@ model DownloadJob {
   sizeBytes    BigInt?
   errorCode    String?
   errorMessage String?
+  runnerId     String?
+  runnerMessage String?
+  leaseExpiresAt DateTime?
+  completedAt  DateTime?
   expiresAt    DateTime?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
   @@index([userId, createdAt])
   @@index([status, expiresAt])
+  @@index([status, leaseExpiresAt, createdAt])
 }
