@@ -7,6 +7,7 @@ import { authenticate } from "./auth.js";
 import { config } from "./config.js";
 import { downloadsQueue, prisma } from "./services.js";
 import { classifyUrl, validatePublicUrl } from "./url-security.js";
+import { parseJobId } from "./request-validation.js";
 
 const app = Fastify({ logger: true, bodyLimit: 16_384 });
 const createBody = z.object({ url: z.string().url().max(2048), format: z.enum(["video", "image"]).optional() });
@@ -34,7 +35,9 @@ app.post("/api/v1/downloads", async (request, reply) => {
 app.get<{ Params: { jobId: string } }>("/api/v1/downloads/:jobId", async (request, reply) => {
   const userId = await authenticate(request.headers.authorization);
   if (!userId) return reply.code(401).send({ error: "UNAUTHORIZED" });
-  const job = await prisma.downloadJob.findFirst({ where: { id: request.params.jobId, userId } });
+  const jobId = parseJobId(request.params.jobId);
+  if (!jobId) return reply.code(400).send({ error: "INVALID_JOB_ID" });
+  const job = await prisma.downloadJob.findFirst({ where: { id: jobId, userId } });
   if (!job) return reply.code(404).send({ error: "NOT_FOUND" });
   return {
     jobId: job.id, status: job.status, progress: job.progress, provider: job.provider, title: job.title,
@@ -46,7 +49,9 @@ app.get<{ Params: { jobId: string } }>("/api/v1/downloads/:jobId", async (reques
 app.get<{ Params: { jobId: string } }>("/api/v1/downloads/:jobId/file", async (request, reply) => {
   const userId = await authenticate(request.headers.authorization);
   if (!userId) return reply.code(401).send({ error: "UNAUTHORIZED" });
-  const job = await prisma.downloadJob.findFirst({ where: { id: request.params.jobId, userId } });
+  const jobId = parseJobId(request.params.jobId);
+  if (!jobId) return reply.code(400).send({ error: "INVALID_JOB_ID" });
+  const job = await prisma.downloadJob.findFirst({ where: { id: jobId, userId } });
   if (!job) return reply.code(404).send({ error: "NOT_FOUND" });
   if (job.status !== "READY" || !job.filePath || !job.fileName) return reply.code(409).send({ error: "FILE_NOT_READY" });
   if (!job.expiresAt || job.expiresAt <= new Date()) {
@@ -69,7 +74,9 @@ app.get<{ Params: { jobId: string } }>("/api/v1/downloads/:jobId/file", async (r
 app.delete<{ Params: { jobId: string } }>("/api/v1/downloads/:jobId", async (request, reply) => {
   const userId = await authenticate(request.headers.authorization);
   if (!userId) return reply.code(401).send({ error: "UNAUTHORIZED" });
-  const job = await prisma.downloadJob.findFirst({ where: { id: request.params.jobId, userId } });
+  const jobId = parseJobId(request.params.jobId);
+  if (!jobId) return reply.code(400).send({ error: "INVALID_JOB_ID" });
+  const job = await prisma.downloadJob.findFirst({ where: { id: jobId, userId } });
   if (!job) return reply.code(404).send({ error: "NOT_FOUND" });
   if (job.filePath) {
     const jobDirectory = resolve(config.DOWNLOAD_DIR, job.id);
