@@ -12,3 +12,6 @@ captures/
 server/node_modules/
 server/dist/
 server/.env
+local-runner/.venv/
+local-runner/.local/
+local-runner/__pycache__/
