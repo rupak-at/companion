@@ -9,5 +9,6 @@ export const config = z.object({
   REDIS_URL: z.string().url(),
   DOWNLOAD_DIR: z.string().default("/tmp/ambient-downloads"),
   PUBLIC_BASE_URL: z.string().url(),
+  LOCAL_RUNNER_TOKEN: z.string().min(32).optional(),
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
 }).parse(process.env);
