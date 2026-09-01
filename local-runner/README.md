@@ -6,16 +6,16 @@ It does **not** solve CAPTCHA, upload screenshots, transmit CAPTCHA answers, or 
 
 ## Setup
 
-1. Add the same random token (at least 32 characters) to `server/.env`:
+1. Generate the shared runner token without displaying it:
 
-   ```env
-   LOCAL_RUNNER_TOKEN="replace-with-a-long-random-token"
+   ```sh
+   cd server
+   npm run runner:setup
    ```
 
 2. Recreate the API so it receives the token and apply database migrations:
 
    ```sh
-   cd server
    npx prisma migrate deploy
    docker compose up --build -d --force-recreate api
    ```
