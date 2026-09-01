@@ -4,6 +4,8 @@ This optional runner processes TikTok and Instagram jobs in a visible Chromium w
 
 Unexpected advertising popups are closed. If the main tab is redirected away from the configured SaveFrom domain, the runner returns to SaveFrom and records a user-visible warning on the job.
 
+SaveFrom's internal `user.php` page is treated as a session/interstitial state. The runner pauses for the user instead of mistaking that page for a processed download result.
+
 It does **not** solve CAPTCHA, upload screenshots, transmit CAPTCHA answers, or copy browser cookies to the server. When verification appears, the job becomes `WAITING_FOR_USER` and the runner waits while the user completes it directly in Chromium.
 
 ## Setup

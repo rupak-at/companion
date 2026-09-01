@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 
 from playwright.sync_api import BrowserContext, Download, Page, TimeoutError as PlaywrightTimeout, sync_playwright
 
-from runner_support import is_savefrom_page, read_env_value, safe_filename
+from runner_support import is_savefrom_interstitial, is_savefrom_page, read_env_value, safe_filename
 
 DEFAULT_SAVEFROM_URL = "https://en1.savefrom.net/19wr/"
 CAPTCHA_SELECTORS = (
@@ -131,12 +131,25 @@ def process_job(context: BrowserContext, api: RunnerApi, job: dict[str, Any], sa
 
         deadline = time.monotonic() + 10 * 60
         prompted_for_manual_download = False
+        handled_interstitials: set[str] = set()
         while time.monotonic() < deadline and not saved_files:
             if page.url != "about:blank" and not is_savefrom_page(page.url):
                 redirected_to = page.url
                 api.update(job_id, "WAITING_FOR_USER", "An unexpected advertising redirect was blocked in the local browser.")
                 print(f"Blocked unexpected main-page redirect: {redirected_to}")
                 page.go_back(wait_until="domcontentloaded", timeout=30_000)
+                continue
+            if is_savefrom_interstitial(page.url) and page.url not in handled_interstitials:
+                handled_interstitials.add(page.url)
+                title = page.title()
+                api.update(job_id, "WAITING_FOR_USER", "SaveFrom opened its user/session interstitial in Chromium.")
+                notify_user(
+                    f"SaveFrom redirected to its user/session page ({title or 'untitled'}). "
+                    "Complete anything visible there, then press Enter here."
+                )
+                input()
+                if is_savefrom_interstitial(page.url):
+                    page.go_back(wait_until="domcontentloaded", timeout=30_000)
                 continue
             if captcha_visible(page):
                 api.update(job_id, "WAITING_FOR_USER", "Human verification is open in the local Chromium window.")

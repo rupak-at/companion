@@ -2,7 +2,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from runner_support import is_savefrom_page, read_env_value, safe_filename
+from runner_support import is_savefrom_interstitial, is_savefrom_page, read_env_value, safe_filename
 
 
 class RunnerSupportTest(unittest.TestCase):
@@ -12,6 +12,10 @@ class RunnerSupportTest(unittest.TestCase):
     def test_savefrom_host_check_rejects_lookalikes(self) -> None:
         self.assertTrue(is_savefrom_page("https://en1.savefrom.net/19wr/"))
         self.assertFalse(is_savefrom_page("https://savefrom.net.attacker.example/"))
+
+    def test_detects_savefrom_user_interstitial(self) -> None:
+        self.assertTrue(is_savefrom_interstitial("https://en1.savefrom.net/1OD/user.php"))
+        self.assertFalse(is_savefrom_interstitial("https://en1.savefrom.net/19wr/"))
 
     def test_reads_only_requested_env_value(self) -> None:
         with TemporaryDirectory() as directory:
