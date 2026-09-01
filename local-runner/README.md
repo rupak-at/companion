@@ -41,7 +41,7 @@ Use `--once` to process one available job or exit. Downloads are saved to `~/Dow
 
 ## Download URLs from a text file
 
-Put one complete URL on each line. Blank lines, comment lines beginning with `#`, and duplicate URLs are ignored. Then run:
+Put one complete URL on each line. Blank lines, comment lines beginning with `#`, and duplicate URLs are ignored. After each successful download, that URL is removed atomically from the file; failed and unprocessed URLs remain so the same command can safely resume later. Then run:
 
 ```sh
 cd local-runner

@@ -16,7 +16,7 @@ from urllib.request import Request, urlopen
 
 from playwright.sync_api import BrowserContext, Download, Page, TimeoutError as PlaywrightTimeout, sync_playwright
 
-from runner_support import is_savefrom_page, read_env_value, read_link_file, safe_filename
+from runner_support import is_savefrom_page, read_env_value, read_link_file, remove_link_from_file, safe_filename
 
 DEFAULT_SAVEFROM_URL = "https://en1.savefrom.net/16Em/download-from-tiktok"
 CAPTCHA_SELECTORS = (
@@ -285,7 +285,8 @@ def main() -> int:
     batch_links: list[str] | None = None
     if args.links_file:
         try:
-            batch_links = read_link_file(args.links_file.expanduser())
+            args.links_file = args.links_file.expanduser().resolve()
+            batch_links = read_link_file(args.links_file)
         except (OSError, ValueError) as error:
             print(f"Cannot read links file: {error}", file=sys.stderr)
             return 2
@@ -315,6 +316,8 @@ def main() -> int:
                     print(f"\n[{position}/{len(batch_links)}] Processing {source_url}")
                     try:
                         process_job(context, api, {"jobId": job_id, "sourceUrl": source_url}, args.savefrom_url, args.download_dir)
+                        remove_link_from_file(args.links_file, source_url)
+                        print(f"Removed completed link from {args.links_file}")
                     except Exception as error:
                         failures += 1
                         print(f"Skipped {source_url}: {error}", file=sys.stderr)

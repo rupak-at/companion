@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import re
+import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -47,3 +49,28 @@ def read_link_file(path: Path) -> list[str]:
             seen.add(link)
             links.append(link)
     return links
+
+
+def remove_link_from_file(path: Path, completed_link: str) -> None:
+    original = path.read_text(encoding="utf-8-sig")
+    remaining_lines = [line for line in original.splitlines(keepends=True) if line.strip() != completed_link]
+    mode = path.stat().st_mode
+    temporary_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary.write("".join(remaining_lines))
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary_name = temporary.name
+        os.chmod(temporary_name, mode)
+        os.replace(temporary_name, path)
+    finally:
+        if temporary_name and os.path.exists(temporary_name):
+            os.unlink(temporary_name)

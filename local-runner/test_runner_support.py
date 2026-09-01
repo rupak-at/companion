@@ -2,7 +2,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from runner_support import is_savefrom_interstitial, is_savefrom_page, read_env_value, read_link_file, safe_filename
+from runner_support import is_savefrom_interstitial, is_savefrom_page, read_env_value, read_link_file, remove_link_from_file, safe_filename
 
 
 class RunnerSupportTest(unittest.TestCase):
@@ -38,6 +38,13 @@ class RunnerSupportTest(unittest.TestCase):
             path.write_text("not a URL\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "line 1"):
                 read_link_file(path)
+
+    def test_removes_only_the_completed_link(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "links.txt"
+            path.write_text("# remaining queue\nhttps://example.com/one\nhttps://example.com/two\nhttps://example.com/one\n", encoding="utf-8")
+            remove_link_from_file(path, "https://example.com/one")
+            self.assertEqual(path.read_text(encoding="utf-8"), "# remaining queue\nhttps://example.com/two\n")
 
 
 if __name__ == "__main__":
