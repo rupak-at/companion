@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -10,14 +11,16 @@ import time
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import unquote, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from playwright.sync_api import BrowserContext, Download, Page, TimeoutError as PlaywrightTimeout, sync_playwright
 
-from runner_support import is_savefrom_interstitial, is_savefrom_page, read_env_value, safe_filename
+from runner_support import is_savefrom_page, read_env_value, safe_filename
 
-DEFAULT_SAVEFROM_URL = "https://en1.savefrom.net/19wr/"
+DEFAULT_SAVEFROM_URL = "https://en1.savefrom.net/16Em/download-from-tiktok"
 CAPTCHA_SELECTORS = (
+    '#output-captcha-dialog:visible',
     'iframe[src*="captcha" i]',
     'iframe[src*="recaptcha" i]',
     'iframe[src*="hcaptcha" i]',
@@ -25,7 +28,21 @@ CAPTCHA_SELECTORS = (
     '[id*="captcha" i]',
 )
 URL_INPUT_SELECTORS = ('input[name="sf_url"]', '#sf_url', 'input[type="url"]', 'input[type="text"]')
-SUBMIT_SELECTORS = ('button[type="submit"]', 'input[type="submit"]')
+SUBMIT_SELECTORS = (
+    'button:has-text("Search")',
+    'input[type="submit"][value*="Search" i]',
+    'button[type="submit"]',
+    'input[type="submit"]',
+)
+DOWNLOAD_SELECTORS = (
+    'a[download]:visible',
+    'a[href*=".mp4"]:visible',
+    'a.link-download:visible',
+    'a.download:visible',
+    '#sf_result a:visible',
+    '[class*="result"] a:visible',
+    'a:has-text("Download"):visible',
+)
 
 
 class RunnerApi:
@@ -86,6 +103,65 @@ def captcha_visible(page: Page) -> bool:
     return first_visible(page, CAPTCHA_SELECTORS) is not None
 
 
+def find_download_control(page: Page):
+    candidates = []
+    for frame in page.frames:
+        for selector in DOWNLOAD_SELECTORS:
+            locator = frame.locator(selector)
+            try:
+                count = locator.count()
+            except Exception:
+                continue
+            for index in range(count):
+                link = locator.nth(index)
+                try:
+                    href = link.get_attribute("href") or ""
+                    label = (link.inner_text() or "").strip()
+                    if not link.is_visible() or not href or href == "#":
+                        continue
+                    combined = f"{label} {href}"
+                    if any(word in combined.lower() for word in ("install", "helper", "app now")):
+                        continue
+                    watermark_free = any(word in combined.lower() for word in ("no watermark", "without watermark", "watermark-free", "nowm"))
+                    explicitly_watermarked = "watermark" in combined.lower() and not watermark_free
+                    if explicitly_watermarked:
+                        continue
+                    score = 250 if watermark_free else 0
+                    score += 100 if link.get_attribute("download") is not None else 0
+                    score += 90 if ".mp4" in href.lower() else 0
+                    score += 35 if "download" in label.lower() else 0
+                    if score >= 35:
+                        candidates.append((score, link))
+                except Exception:
+                    continue
+    return max(candidates, key=lambda candidate: candidate[0])[1] if candidates else None
+
+
+def fetch_generated_download(context: BrowserContext, control, download_dir: Path, fallback_name: str) -> Path | None:
+    href = control.get_attribute("href") or ""
+    if not href or href.startswith(("blob:", "javascript:")):
+        return None
+    media_url = urljoin(control.evaluate("element => element.baseURI"), href)
+    try:
+        response = context.request.get(media_url, timeout=120_000, fail_on_status_code=False)
+    except Exception:
+        return None
+    try:
+        content_type = response.headers.get("content-type", "")
+        if not response.ok or not (content_type.startswith("video/") or "octet-stream" in content_type):
+            return None
+        disposition = response.headers.get("content-disposition", "")
+        encoded_name = re.search(r"filename\*=UTF-8''([^;]+)", disposition, re.IGNORECASE)
+        plain_name = re.search(r'filename="?([^";]+)', disposition, re.IGNORECASE)
+        url_name = Path(urlparse(response.url).path).name
+        name = unquote(encoded_name.group(1)) if encoded_name else plain_name.group(1) if plain_name else url_name
+        target = download_dir / safe_filename(name, fallback_name)
+        target.write_bytes(response.body())
+        return target
+    finally:
+        response.dispose()
+
+
 def close_ad_popup(popup: Page) -> None:
     try:
         popup.wait_for_load_state("domcontentloaded", timeout=5_000)
@@ -131,7 +207,7 @@ def process_job(context: BrowserContext, api: RunnerApi, job: dict[str, Any], sa
 
         deadline = time.monotonic() + 10 * 60
         prompted_for_manual_download = False
-        handled_interstitials: set[str] = set()
+        captcha_was_visible = False
         while time.monotonic() < deadline and not saved_files:
             if page.url != "about:blank" and not is_savefrom_page(page.url):
                 redirected_to = page.url
@@ -139,30 +215,25 @@ def process_job(context: BrowserContext, api: RunnerApi, job: dict[str, Any], sa
                 print(f"Blocked unexpected main-page redirect: {redirected_to}")
                 page.go_back(wait_until="domcontentloaded", timeout=30_000)
                 continue
-            if is_savefrom_interstitial(page.url) and page.url not in handled_interstitials:
-                handled_interstitials.add(page.url)
-                title = page.title()
-                api.update(job_id, "WAITING_FOR_USER", "SaveFrom opened its user/session interstitial in Chromium.")
-                notify_user(
-                    f"SaveFrom redirected to its user/session page ({title or 'untitled'}). "
-                    "Complete anything visible there, then press Enter here."
-                )
-                input()
-                if is_savefrom_interstitial(page.url):
-                    page.go_back(wait_until="domcontentloaded", timeout=30_000)
-                continue
             if captcha_visible(page):
-                api.update(job_id, "WAITING_FOR_USER", "Human verification is open in the local Chromium window.")
-                notify_user("Solve the verification directly in Chromium, then press Enter here. No answer or screenshot is uploaded.")
-                input()
-                api.update(job_id, "DOWNLOADING", "Verification completed; waiting for the browser download.")
+                if not captcha_was_visible:
+                    captcha_was_visible = True
+                    api.update(job_id, "WAITING_FOR_USER", "Human verification is open in the local Chromium window.")
+                    notify_user("Solve the verification directly in Chromium. The runner will continue automatically when it closes.")
+                time.sleep(1)
                 continue
+            if captcha_was_visible:
+                captcha_was_visible = False
+                api.update(job_id, "DOWNLOADING", "Verification completed; looking for the generated download.")
 
-            download_control = page.get_by_role("link", name="Download", exact=False).first
-            if not download_control.is_visible(timeout=1_000):
-                download_control = page.get_by_role("button", name="Download", exact=False).first
-            if download_control.is_visible(timeout=1_000):
+            download_control = find_download_control(page)
+            if download_control is not None:
                 api.update(job_id, "DOWNLOADING", "Download control found in the local browser.")
+                direct_file = fetch_generated_download(context, download_control, download_dir, f"{job_id}.mp4")
+                if direct_file is not None:
+                    saved_files.append(direct_file)
+                    print(f"Downloaded generated media directly: {direct_file}")
+                    continue
                 download_control.click()
                 time.sleep(2)
                 continue

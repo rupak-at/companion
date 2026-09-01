@@ -10,7 +10,7 @@ class RunnerSupportTest(unittest.TestCase):
         self.assertEqual(safe_filename("../../A video?.mp4"), "A_video_.mp4")
 
     def test_savefrom_host_check_rejects_lookalikes(self) -> None:
-        self.assertTrue(is_savefrom_page("https://en1.savefrom.net/19wr/"))
+        self.assertTrue(is_savefrom_page("https://en1.savefrom.net/16Em/download-from-tiktok"))
         self.assertFalse(is_savefrom_page("https://savefrom.net.attacker.example/"))
 
     def test_detects_savefrom_user_interstitial(self) -> None:
