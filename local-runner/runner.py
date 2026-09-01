@@ -132,6 +132,12 @@ def process_job(context: BrowserContext, api: RunnerApi, job: dict[str, Any], sa
         deadline = time.monotonic() + 10 * 60
         prompted_for_manual_download = False
         while time.monotonic() < deadline and not saved_files:
+            if page.url != "about:blank" and not is_savefrom_page(page.url):
+                redirected_to = page.url
+                api.update(job_id, "WAITING_FOR_USER", "An unexpected advertising redirect was blocked in the local browser.")
+                print(f"Blocked unexpected main-page redirect: {redirected_to}")
+                page.go_back(wait_until="domcontentloaded", timeout=30_000)
+                continue
             if captcha_visible(page):
                 api.update(job_id, "WAITING_FOR_USER", "Human verification is open in the local Chromium window.")
                 notify_user("Solve the verification directly in Chromium, then press Enter here. No answer or screenshot is uploaded.")
