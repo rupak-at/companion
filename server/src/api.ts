@@ -71,9 +71,11 @@ app.post("/api/v1/runner/jobs/claim", async (request, reply) => {
   const parsed = runnerIdentity.safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ error: "INVALID_RUNNER" });
   const now = new Date();
+  const resumableStatuses = ["CLAIMED", "WAITING_FOR_USER", "DOWNLOADING"] as const;
   const claimable: Prisma.DownloadJobWhereInput = { OR: [
     { status: "WAITING_FOR_LOCAL_RUNNER" },
-    { status: { in: ["CLAIMED", "WAITING_FOR_USER", "DOWNLOADING"] }, leaseExpiresAt: { lt: now } },
+    { runnerId: parsed.data.runnerId, status: { in: [...resumableStatuses] } },
+    { status: { in: [...resumableStatuses] }, leaseExpiresAt: { lt: now } },
   ] };
   const candidate = await prisma.downloadJob.findFirst({ where: claimable, orderBy: { createdAt: "asc" } });
   if (!candidate) return reply.code(204).send();
