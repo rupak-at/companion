@@ -31,3 +31,19 @@ def read_env_value(path: Path, key: str) -> str | None:
         if name.strip() == key:
             return value.strip().strip('"\'')
     return None
+
+
+def read_link_file(path: Path) -> list[str]:
+    links: list[str] = []
+    seen: set[str] = set()
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), start=1):
+        link = raw_line.strip()
+        if not link or link.startswith("#"):
+            continue
+        parsed = urlparse(link)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError(f"Invalid URL on line {line_number}: {link}")
+        if link not in seen:
+            seen.add(link)
+            links.append(link)
+    return links

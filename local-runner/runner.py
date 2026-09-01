@@ -16,7 +16,7 @@ from urllib.request import Request, urlopen
 
 from playwright.sync_api import BrowserContext, Download, Page, TimeoutError as PlaywrightTimeout, sync_playwright
 
-from runner_support import is_savefrom_page, read_env_value, safe_filename
+from runner_support import is_savefrom_page, read_env_value, read_link_file, safe_filename
 
 DEFAULT_SAVEFROM_URL = "https://en1.savefrom.net/16Em/download-from-tiktok"
 CAPTCHA_SELECTORS = (
@@ -78,6 +78,12 @@ class RunnerApi:
             raise RuntimeError(f"Runner API returned HTTP {error.code}: {detail}") from error
         except URLError as error:
             raise RuntimeError(f"Cannot reach runner API: {error.reason}") from error
+
+
+class LocalBatchStatus:
+    def update(self, job_id: str, status: str, message: str, error_code: str | None = None) -> None:
+        suffix = f" ({error_code})" if error_code else ""
+        print(f"[{job_id}] {status}: {message}{suffix}", flush=True)
 
 
 def notify_user(message: str) -> None:
@@ -173,7 +179,7 @@ def close_ad_popup(popup: Page) -> None:
             popup.close()
 
 
-def process_job(context: BrowserContext, api: RunnerApi, job: dict[str, Any], savefrom_url: str, download_dir: Path) -> None:
+def process_job(context: BrowserContext, api: Any, job: dict[str, Any], savefrom_url: str, download_dir: Path) -> None:
     job_id = str(job["jobId"])
     source_url = str(job["sourceUrl"])
     page = context.new_page()
@@ -262,24 +268,38 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--savefrom-url", default=os.getenv("SAVEFROM_URL", DEFAULT_SAVEFROM_URL))
     parser.add_argument("--profile-dir", type=Path, default=Path(".local/browser-profile"))
     parser.add_argument("--download-dir", type=Path, default=Path.home() / "Downloads" / "Ambient Companion")
+    parser.add_argument("--links-file", type=Path, help="Process one URL per line without using the backend queue")
     parser.add_argument("--once", action="store_true", help="Exit when no queued job is available")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    repo_env = Path(__file__).resolve().parent.parent / "server" / ".env"
-    token = os.getenv("LOCAL_RUNNER_TOKEN") or read_env_value(repo_env, "LOCAL_RUNNER_TOKEN")
-    if not token or len(token) < 32:
-        print("LOCAL_RUNNER_TOKEN is missing or shorter than 32 characters. Add the same token to server/.env.", file=sys.stderr)
-        return 2
     if not is_savefrom_page(args.savefrom_url):
         print("SAVEFROM_URL must use savefrom.net or one of its subdomains.", file=sys.stderr)
         return 2
 
     args.profile_dir.mkdir(parents=True, exist_ok=True)
     args.download_dir.mkdir(parents=True, exist_ok=True)
-    api = RunnerApi(args.api_url, token, args.runner_id)
+
+    batch_links: list[str] | None = None
+    if args.links_file:
+        try:
+            batch_links = read_link_file(args.links_file.expanduser())
+        except (OSError, ValueError) as error:
+            print(f"Cannot read links file: {error}", file=sys.stderr)
+            return 2
+        if not batch_links:
+            print("The links file contains no URLs.", file=sys.stderr)
+            return 2
+        api: Any = LocalBatchStatus()
+    else:
+        repo_env = Path(__file__).resolve().parent.parent / "server" / ".env"
+        token = os.getenv("LOCAL_RUNNER_TOKEN") or read_env_value(repo_env, "LOCAL_RUNNER_TOKEN")
+        if not token or len(token) < 32:
+            print("LOCAL_RUNNER_TOKEN is missing or shorter than 32 characters. Add the same token to server/.env.", file=sys.stderr)
+            return 2
+        api = RunnerApi(args.api_url, token, args.runner_id)
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=args.profile_dir,
@@ -287,6 +307,19 @@ def main() -> int:
             accept_downloads=True,
         )
         try:
+            if batch_links is not None:
+                failures = 0
+                for position, source_url in enumerate(batch_links, start=1):
+                    match = re.search(r"/video/(\d+)", source_url)
+                    job_id = match.group(1) if match else f"batch-{position}"
+                    print(f"\n[{position}/{len(batch_links)}] Processing {source_url}")
+                    try:
+                        process_job(context, api, {"jobId": job_id, "sourceUrl": source_url}, args.savefrom_url, args.download_dir)
+                    except Exception as error:
+                        failures += 1
+                        print(f"Skipped {source_url}: {error}", file=sys.stderr)
+                print(f"Batch finished: {len(batch_links) - failures} completed, {failures} failed.")
+                return 1 if failures else 0
             while True:
                 job = api.claim()
                 if not job:
