@@ -12,6 +12,9 @@ val localProperties = Properties().apply {
 
 fun localString(name: String): String {
     val value = localProperties.getProperty(name, System.getenv(name) ?: "")
+        .trim()
+        .removeSurrounding("\"")
+        .removeSurrounding("'")
     return "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 }
 
