@@ -109,11 +109,22 @@ class DownloadSubmissionClient(context: Context) {
     }
 
     private data class HttpResult(val code: Int, val body: String) {
-        fun message(fallbackCode: Int): String = runCatching {
-            Json.parseToJsonElement(body).jsonObject["error"]?.jsonPrimitive?.content
-                ?: Json.parseToJsonElement(body).jsonObject["message"]?.jsonPrimitive?.content
-        }.getOrNull() ?: "Request failed (HTTP $fallbackCode)."
+        fun message(fallbackCode: Int): String = parseApiError(body, fallbackCode)
     }
 }
 
 class SubmissionException(message: String) : Exception(message)
+
+internal fun parseApiError(body: String, statusCode: Int): String {
+    val payload = runCatching { Json.parseToJsonElement(body).jsonObject }.getOrNull()
+    val detail = sequenceOf("msg", "message", "error_description", "error")
+        .mapNotNull { key -> runCatching { payload?.get(key)?.jsonPrimitive?.content }.getOrNull() }
+        .firstOrNull { it.isNotBlank() }
+    val errorCode = runCatching { payload?.get("error_code")?.jsonPrimitive?.content }.getOrNull()
+    return when {
+        detail != null && errorCode != null -> "$detail ($errorCode)"
+        detail != null -> detail
+        errorCode != null -> errorCode
+        else -> "Request failed (HTTP $statusCode)."
+    }
+}
