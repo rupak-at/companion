@@ -37,7 +37,14 @@ It does **not** solve CAPTCHA, upload screenshots, transmit CAPTCHA answers, or 
    .venv/bin/python runner.py
    ```
 
-Use `--once` to process one available job or exit. Downloads are saved to `~/Downloads/Ambient Companion/`. The persistent browser profile stays under `local-runner/.local/` and is ignored by Git.
+Use `--once` to process one available job or exit. Downloads are saved to `~/Downloads/Ambient Companion/` unless `RUNNER_DOWNLOAD_DIR` is set:
+
+```sh
+export RUNNER_DOWNLOAD_DIR="/path/to/my/videos"
+.venv/bin/python runner.py
+```
+
+An explicit `--download-dir /another/path` takes priority over the environment setting. Both options support `~` and relative paths. The persistent browser profile stays under `local-runner/.local/` and is ignored by Git.
 
 ## Download URLs from a text file
 
@@ -48,6 +55,6 @@ cd local-runner
 .venv/bin/python runner.py --links-file /absolute/path/to/available_links.txt
 ```
 
-This standalone mode does not require the backend, Docker, or `LOCAL_RUNNER_TOKEN`. It uses the same visible browser, CAPTCHA assistance, redirect handling, persistent profile, and download directory as queued jobs. Use `--download-dir /path/to/folder` to select another destination.
+This standalone mode does not require the backend, Docker, or `LOCAL_RUNNER_TOKEN`. It uses the same visible browser, CAPTCHA assistance, redirect handling, persistent profile, and download directory as queued jobs. Use `RUNNER_DOWNLOAD_DIR` or `--download-dir /path/to/folder` to select another destination.
 
 SaveFrom is a third-party website whose interface and terms can change. The user remains responsible for using it only for content they are permitted to download.

@@ -19,6 +19,7 @@ from playwright.sync_api import BrowserContext, Download, Page, TimeoutError as 
 from runner_support import is_savefrom_page, read_env_value, read_link_file, remove_link_from_file, safe_filename
 
 DEFAULT_SAVEFROM_URL = "https://en1.savefrom.net/16Em/download-from-tiktok"
+DEFAULT_DOWNLOAD_DIR = Path.home() / "Downloads" / "Ambient Companion"
 CAPTCHA_SELECTORS = (
     '#output-captcha-dialog:visible',
     'iframe[src*="captcha" i]',
@@ -267,7 +268,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--runner-id", default=os.getenv("RUNNER_ID", f"{socket.gethostname()}-browser"))
     parser.add_argument("--savefrom-url", default=os.getenv("SAVEFROM_URL", DEFAULT_SAVEFROM_URL))
     parser.add_argument("--profile-dir", type=Path, default=Path(".local/browser-profile"))
-    parser.add_argument("--download-dir", type=Path, default=Path.home() / "Downloads" / "Ambient Companion")
+    parser.add_argument(
+        "--download-dir",
+        type=Path,
+        default=Path(os.getenv("RUNNER_DOWNLOAD_DIR") or DEFAULT_DOWNLOAD_DIR),
+        help="Download destination (overrides RUNNER_DOWNLOAD_DIR)",
+    )
     parser.add_argument("--links-file", type=Path, help="Process one URL per line without using the backend queue")
     parser.add_argument("--once", action="store_true", help="Exit when no queued job is available")
     return parser.parse_args()
@@ -279,6 +285,8 @@ def main() -> int:
         print("SAVEFROM_URL must use savefrom.net or one of its subdomains.", file=sys.stderr)
         return 2
 
+    args.profile_dir = args.profile_dir.expanduser().resolve()
+    args.download_dir = args.download_dir.expanduser().resolve()
     args.profile_dir.mkdir(parents=True, exist_ok=True)
     args.download_dir.mkdir(parents=True, exist_ok=True)
 
