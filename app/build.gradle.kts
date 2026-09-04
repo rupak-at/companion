@@ -1,7 +1,18 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+}
+
+val localProperties = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+}
+
+fun localString(name: String): String {
+    val value = localProperties.getProperty(name, System.getenv(name) ?: "")
+    return "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 }
 
 android {
@@ -14,9 +25,13 @@ android {
         targetSdk = 37
         versionCode = 3
         versionName = "0.3.0"
+        buildConfigField("String", "DOWNLOAD_API_BASE_URL", localString("DOWNLOAD_API_BASE_URL"))
+        buildConfigField("String", "SUPABASE_URL", localString("SUPABASE_URL"))
+        buildConfigField("String", "SUPABASE_ANON_KEY", localString("SUPABASE_ANON_KEY"))
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 

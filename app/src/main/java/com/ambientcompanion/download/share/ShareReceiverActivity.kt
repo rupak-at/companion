@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,14 +33,27 @@ import androidx.compose.ui.unit.sp
 import com.ambientcompanion.download.classifier.ClassifiedLink
 import com.ambientcompanion.download.classifier.LinkClassifier
 import com.ambientcompanion.download.classifier.LinkType
+import com.ambientcompanion.download.network.DownloadSubmissionClient
+import kotlinx.coroutines.launch
 
 class ShareReceiverActivity : ComponentActivity() {
     private var link by mutableStateOf<ClassifiedLink?>(null)
+    private var submissionState by mutableStateOf(SubmissionState.READY)
+    private var submissionMessage by mutableStateOf<String?>(null)
+    private val submissionClient by lazy { DownloadSubmissionClient(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         readIntent(intent)
-        setContent { DownloadConfirmation(link = link, onCancel = ::finish, onDownload = { showBackendPending() }) }
+        setContent {
+            DownloadConfirmation(
+                link = link,
+                state = submissionState,
+                message = submissionMessage,
+                onCancel = ::finish,
+                onSave = ::saveForLater,
+            )
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -50,15 +64,38 @@ class ShareReceiverActivity : ComponentActivity() {
     private fun readIntent(intent: Intent) {
         val sharedText = intent.takeIf { it.action == Intent.ACTION_SEND }?.getStringExtra(Intent.EXTRA_TEXT)
         link = SharedUrlExtractor.extract(sharedText)?.let(LinkClassifier::classify)
+        submissionState = SubmissionState.READY
+        submissionMessage = null
     }
 
-    private fun showBackendPending() {
-        // Submission is intentionally disabled until the authenticated backend URL is configured.
-        link = null
+    private fun saveForLater() {
+        val selectedLink = link ?: return
+        submissionState = SubmissionState.SAVING
+        submissionMessage = null
+        lifecycleScope.launch {
+            runCatching { submissionClient.saveForLater(selectedLink.normalizedUrl) }
+                .onSuccess { jobId ->
+                    submissionState = SubmissionState.SAVED
+                    submissionMessage = "Saved for the local runner. Job ${jobId.take(8)}"
+                }
+                .onFailure { error ->
+                    submissionState = SubmissionState.ERROR
+                    submissionMessage = error.message ?: "The link could not be saved."
+                }
+        }
     }
 }
+
+private enum class SubmissionState { READY, SAVING, SAVED, ERROR }
+
 @androidx.compose.runtime.Composable
-private fun DownloadConfirmation(link: ClassifiedLink?, onCancel: () -> Unit, onDownload: () -> Unit) {
+private fun DownloadConfirmation(
+    link: ClassifiedLink?,
+    state: SubmissionState,
+    message: String?,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
+) {
     val ink = Color(0xFF2F2630)
     val aubergine = Color(0xFF5C3B58)
     val supported = link != null && link.type != LinkType.UNKNOWN
@@ -75,6 +112,7 @@ private fun DownloadConfirmation(link: ClassifiedLink?, onCancel: () -> Unit, on
                     Text(
                         when {
                             link == null -> "I couldn't find a secure link."
+                            state == SubmissionState.SAVED -> "Saved for later"
                             supported -> "${link.providerName} link detected"
                             else -> "That link isn't supported yet."
                         },
@@ -83,21 +121,33 @@ private fun DownloadConfirmation(link: ClassifiedLink?, onCancel: () -> Unit, on
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center,
                     )
-                    if (supported) {
+                    if (message != null) {
                         Spacer(Modifier.height(8.dp))
-                        Text("Want me to save this?", color = ink.copy(alpha = .7f), fontSize = 15.sp)
+                        Text(message, color = ink.copy(alpha = .7f), fontSize = 15.sp, textAlign = TextAlign.Center)
+                    } else if (supported) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Save it now and download it later with the local runner?", color = ink.copy(alpha = .7f), fontSize = 15.sp, textAlign = TextAlign.Center)
                     }
                     Spacer(Modifier.height(26.dp))
                     Button(
-                        onClick = onDownload,
-                        enabled = supported,
+                        onClick = if (state == SubmissionState.SAVED) onCancel else onSave,
+                        enabled = supported && state != SubmissionState.SAVING,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(18.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = aubergine),
-                    ) { Text("Download") }
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) {
-                        Text("Cancel", color = ink)
+                    ) {
+                        Text(when (state) {
+                            SubmissionState.READY -> "Save for later"
+                            SubmissionState.SAVING -> "Saving…"
+                            SubmissionState.SAVED -> "Done"
+                            SubmissionState.ERROR -> "Try again"
+                        })
+                    }
+                    if (state != SubmissionState.SAVED) {
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) {
+                            Text("Cancel", color = ink)
+                        }
                     }
                 }
             }
