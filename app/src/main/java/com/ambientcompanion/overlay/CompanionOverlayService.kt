@@ -190,6 +190,9 @@ class CompanionOverlayService : AccessibilityService() {
                 ACTION_RESET_POSITION -> resetPosition()
                 ACTION_PREVIEW -> intent.getStringExtra(EXTRA_STATE)?.let(::previewState)
                 ACTION_APP_OPENED -> showAppGreeting()
+                ACTION_EXTERNAL_MESSAGE -> intent.getStringExtra(EXTRA_MESSAGE)?.let { message ->
+                    if (settings.messagesEnabled) showMessage(message)
+                }
             }
         }
     }
@@ -579,6 +582,7 @@ class CompanionOverlayService : AccessibilityService() {
             addAction(ACTION_RESET_POSITION)
             addAction(ACTION_PREVIEW)
             addAction(ACTION_APP_OPENED)
+            addAction(ACTION_EXTERNAL_MESSAGE)
         }
         ContextCompat.registerReceiver(this, systemReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         receiverRegistered = true
@@ -1296,6 +1300,8 @@ class CompanionOverlayService : AccessibilityService() {
         const val ACTION_HIDE = "com.ambientcompanion.action.HIDE"
         const val ACTION_RESET_POSITION = "com.ambientcompanion.action.RESET_POSITION"
         const val ACTION_APP_OPENED = "com.ambientcompanion.action.APP_OPENED"
+        const val ACTION_EXTERNAL_MESSAGE = "com.ambientcompanion.action.EXTERNAL_MESSAGE"
+        const val EXTRA_MESSAGE = "companion_message"
         private const val PREVIEW_DURATION_MS = 10_000L
         private const val TAP_WINDOW_MS = 360L
         private const val EVENT_DURATION_MS = 2_500L

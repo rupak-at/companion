@@ -145,7 +145,7 @@ SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_OR_ANON_KEY
 
 `10.0.2.2` reaches the development computer from the Android emulator. On a physical phone, use an HTTPS backend URL or the computer's reachable LAN address for debug builds.
 
-From TikTok or Instagram, choose **Share → Download with Ambient**. The share target queues the link in the background, briefly confirms it with a toast, and closes without opening a confirmation screen. Once connected, the app creates one database job; it does not poll or attempt CAPTCHA. Start `local-runner/runner.py` later to claim the oldest saved job and complete verification in its visible browser.
+From TikTok or Instagram, choose **Share → Download with Ambient**. The share target queues the link in the background, briefly confirms it with a toast, and closes without opening a confirmation screen. Once connected, the app creates one database job and confirms completion through the companion bubble and, when permitted, a system notification; it does not poll or attempt CAPTCHA. Start `local-runner/runner.py` later to claim the oldest saved job and complete verification in its visible browser.
 
 Repository automation rules live in [AGENTS.md](AGENTS.md). In particular, each coherent
 change must be verified and committed separately so it can be reverted safely.
