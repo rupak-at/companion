@@ -317,17 +317,14 @@ def close_ad_popup(popup: Page) -> None:
 
 def process_job(
     context: BrowserContext,
+    page: Page,
     api: Any,
     job: dict[str, Any],
     savefrom_url: str,
     download_dir: Path,
-    start_minimized: bool = True,
 ) -> None:
     job_id = str(job["jobId"])
     source_url = str(job["sourceUrl"])
-    page = context.new_page()
-    if start_minimized:
-        minimize_chromium_window(context, page)
     saved_files: list[Path] = []
 
     def save_download(download: Download) -> None:
@@ -449,8 +446,8 @@ def process_job(
         api.update(job_id, "FAILED", str(error)[:500], "LOCAL_BROWSER_FAILED")
         raise
     finally:
-        if not page.is_closed():
-            page.close()
+        page.remove_listener("download", save_download)
+        page.remove_listener("popup", close_ad_popup)
 
 
 def parse_args() -> argparse.Namespace:
@@ -469,8 +466,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--start-minimized",
         action=argparse.BooleanOptionalAction,
-        default=environment_flag("RUNNER_START_MINIMIZED", True),
-        help="Start Chromium minimized (default; use --no-start-minimized to keep it visible)",
+        default=environment_flag("RUNNER_START_MINIMIZED", False),
+        help="Start Chromium minimized (disabled by default)",
     )
     parser.add_argument("--once", action="store_true", help="Exit when no queued job is available")
     return parser.parse_args()
@@ -537,6 +534,9 @@ def main() -> int:
             args=["--start-minimized"] if args.start_minimized else [],
         )
         try:
+            page = context.pages[0] if context.pages else context.new_page()
+            if args.start_minimized:
+                minimize_chromium_window(context, page)
             if batch_links is not None:
                 failures = 0
                 for position, source_url in enumerate(batch_links, start=1):
@@ -546,11 +546,11 @@ def main() -> int:
                     try:
                         process_job(
                             context,
+                            page,
                             api,
                             {"jobId": job_id, "sourceUrl": source_url},
                             args.savefrom_url,
                             args.download_dir,
-                            args.start_minimized,
                         )
                         record_completed_link(DEFAULT_COMPLETED_LINKS_FILE, source_url)
                         remove_link_from_file(args.links_file, source_url)
@@ -570,7 +570,7 @@ def main() -> int:
                     continue
                 print(f"Claimed {job['jobId']}: {job['sourceUrl']}")
                 try:
-                    process_job(context, api, job, args.savefrom_url, args.download_dir, args.start_minimized)
+                    process_job(context, page, api, job, args.savefrom_url, args.download_dir)
                 except Exception as error:
                     print(f"Job failed: {error}", file=sys.stderr)
         finally:

@@ -24,9 +24,9 @@ class RunnerCliTest(unittest.TestCase):
         )
         session.detach.assert_called_once_with()
 
-    def test_browser_starts_minimized_by_default(self) -> None:
+    def test_browser_stays_visible_by_default(self) -> None:
         with patch.dict("os.environ", {}, clear=True), patch("sys.argv", ["runner.py"]):
-            self.assertTrue(parse_args().start_minimized)
+            self.assertFalse(parse_args().start_minimized)
 
     def test_browser_can_be_kept_visible_from_command_line(self) -> None:
         with patch.dict("os.environ", {"RUNNER_START_MINIMIZED": "true"}), patch(
