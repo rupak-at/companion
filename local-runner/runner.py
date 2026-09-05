@@ -73,6 +73,13 @@ ERROR_SELECTORS = (
 )
 
 
+def environment_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
 class RunnerApi:
     def __init__(self, base_url: str, token: str, runner_id: str) -> None:
         self.base_url = base_url.rstrip("/")
@@ -373,7 +380,6 @@ def process_job(context: BrowserContext, api: Any, job: dict[str, Any], savefrom
                         for open_page in context.pages:
                             if open_page != page and not open_page.is_closed():
                                 open_page.close()
-                        page.bring_to_front()
                         reacquire_deadline = min(deadline, time.monotonic() + 30)
                         download_control = None
                         while time.monotonic() < reacquire_deadline and download_control is None:
@@ -426,13 +432,26 @@ def parse_args() -> argparse.Namespace:
         help="Download destination (overrides RUNNER_DOWNLOAD_DIR)",
     )
     parser.add_argument("--links-file", type=Path, help="Process one URL per line without using the backend queue")
+    parser.add_argument(
+        "--start-minimized",
+        action=argparse.BooleanOptionalAction,
+        default=environment_flag("RUNNER_START_MINIMIZED", True),
+        help="Start Chromium minimized (default; use --no-start-minimized to keep it visible)",
+    )
     parser.add_argument("--once", action="store_true", help="Exit when no queued job is available")
     return parser.parse_args()
 
 
 def load_runner_environment() -> None:
     local_env = RUNNER_DIRECTORY / ".env"
-    for key in ("RUNNER_API_URL", "RUNNER_ID", "SAVEFROM_URL", "RUNNER_DOWNLOAD_DIR", "LOCAL_RUNNER_TOKEN"):
+    for key in (
+        "RUNNER_API_URL",
+        "RUNNER_ID",
+        "SAVEFROM_URL",
+        "RUNNER_DOWNLOAD_DIR",
+        "RUNNER_START_MINIMIZED",
+        "LOCAL_RUNNER_TOKEN",
+    ):
         value = read_env_value(local_env, key)
         if value is not None:
             os.environ.setdefault(key, value)
@@ -481,6 +500,7 @@ def main() -> int:
             user_data_dir=args.profile_dir,
             headless=False,
             accept_downloads=True,
+            args=["--start-minimized"] if args.start_minimized else [],
         )
         try:
             if batch_links is not None:
