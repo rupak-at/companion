@@ -17,14 +17,16 @@ from urllib.request import Request, urlopen
 from playwright.sync_api import BrowserContext, Download, Page, TimeoutError as PlaywrightTimeout, sync_playwright
 
 from runner_support import (
+    available_download_path,
     is_savefrom_page,
+    is_processing_error,
     link_key,
     read_completed_links,
     read_env_value,
     read_link_file,
     record_completed_link,
     remove_link_from_file,
-    safe_filename,
+    score_download_candidate,
 )
 
 DEFAULT_SAVEFROM_URL = "https://en1.savefrom.net/16Em/download-from-tiktok"
@@ -42,10 +44,13 @@ CAPTCHA_SELECTORS = (
 URL_INPUT_SELECTORS = ('input[name="sf_url"]', '#sf_url', 'input[type="url"]', 'input[type="text"]')
 SUBMIT_SELECTORS = (
     'button:has-text("Search")',
+    'button:has-text("Download")',
     'input[type="submit"][value*="Search" i]',
+    'input[type="submit"][value*="Download" i]',
     'button[type="submit"]',
     'input[type="submit"]',
 )
+FORM_SUBMIT_SELECTORS = ('button:visible', 'input[type="submit"]:visible', 'input[type="button"]:visible')
 DOWNLOAD_SELECTORS = (
     'a[download]:visible',
     'a[href*=".mp4"]:visible',
@@ -53,7 +58,13 @@ DOWNLOAD_SELECTORS = (
     'a.download:visible',
     '#sf_result a:visible',
     '[class*="result"] a:visible',
-    'a:has-text("Download"):visible',
+)
+ERROR_SELECTORS = (
+    '#sf_result [class*="error" i]:visible',
+    '#sf_result [class*="alert" i]:visible',
+    '[class*="result"] [class*="error" i]:visible',
+    '[role="alert"]:visible',
+    "text=/try again|something went wrong|could not process|couldn't process/i",
 )
 
 
@@ -121,6 +132,47 @@ def captcha_visible(page: Page) -> bool:
     return first_visible(page, CAPTCHA_SELECTORS) is not None
 
 
+def find_submit_control(page: Page, url_input):
+    try:
+        form = url_input.locator("xpath=ancestor::form[1]")
+        submit = first_visible(form, FORM_SUBMIT_SELECTORS)
+        if submit is not None:
+            return submit
+    except Exception:
+        pass
+    return first_visible(page, SUBMIT_SELECTORS)
+
+
+def wait_for_captcha(page: Page, api: Any, job_id: str, deadline: float) -> bool:
+    if not captcha_visible(page):
+        return False
+    api.update(job_id, "WAITING_FOR_USER", "Human verification is open in the local Chromium window.")
+    notify_user("Solve the verification directly in Chromium. The runner will continue automatically when it closes.")
+    while captcha_visible(page):
+        if time.monotonic() >= deadline:
+            raise RuntimeError("Timed out waiting for human verification")
+        time.sleep(1)
+    api.update(job_id, "DOWNLOADING", "Verification completed; continuing SaveFrom processing.")
+    print("Verification completed; continuing.")
+    return True
+
+
+def visible_processing_error(page: Page) -> str | None:
+    for frame in page.frames:
+        for selector in ERROR_SELECTORS:
+            locator = frame.locator(selector)
+            try:
+                for index in range(locator.count()):
+                    candidate = locator.nth(index)
+                    if candidate.is_visible():
+                        message = (candidate.inner_text() or "").strip()
+                        if is_processing_error(message):
+                            return message
+            except Exception:
+                continue
+    return None
+
+
 def find_download_control(page: Page):
     candidates = []
     for frame in page.frames:
@@ -137,18 +189,16 @@ def find_download_control(page: Page):
                     label = (link.inner_text() or "").strip()
                     if not link.is_visible() or not href or href == "#":
                         continue
-                    combined = f"{label} {href}"
-                    if any(word in combined.lower() for word in ("install", "helper", "app now")):
-                        continue
-                    watermark_free = any(word in combined.lower() for word in ("no watermark", "without watermark", "watermark-free", "nowm"))
-                    explicitly_watermarked = "watermark" in combined.lower() and not watermark_free
-                    if explicitly_watermarked:
-                        continue
-                    score = 250 if watermark_free else 0
-                    score += 100 if link.get_attribute("download") is not None else 0
-                    score += 90 if ".mp4" in href.lower() else 0
-                    score += 35 if "download" in label.lower() else 0
-                    if score >= 35:
+                    details = link.evaluate(
+                        "element => ({ inResult: Boolean(element.closest('#sf_result, [class*=result], [class*=media]')) })"
+                    )
+                    score = score_download_candidate(
+                        label,
+                        href,
+                        link.get_attribute("download") is not None,
+                        bool(details["inResult"]),
+                    )
+                    if score is not None:
                         candidates.append((score, link))
                 except Exception:
                     continue
@@ -173,7 +223,7 @@ def fetch_generated_download(context: BrowserContext, control, download_dir: Pat
         plain_name = re.search(r'filename="?([^";]+)', disposition, re.IGNORECASE)
         url_name = Path(urlparse(response.url).path).name
         name = unquote(encoded_name.group(1)) if encoded_name else plain_name.group(1) if plain_name else url_name
-        target = download_dir / safe_filename(name, fallback_name)
+        target = available_download_path(download_dir, name, fallback_name)
         target.write_bytes(response.body())
         return target
     finally:
@@ -183,9 +233,8 @@ def fetch_generated_download(context: BrowserContext, control, download_dir: Pat
 def close_ad_popup(popup: Page) -> None:
     try:
         popup.wait_for_load_state("domcontentloaded", timeout=5_000)
-        if popup.url != "about:blank" and not is_savefrom_page(popup.url):
-            print(f"Closed unexpected popup: {popup.url}")
-            popup.close()
+        print(f"Closed popup/redirect tab: {popup.url}")
+        popup.close()
     except PlaywrightTimeout:
         if not popup.is_closed():
             popup.close()
@@ -198,7 +247,7 @@ def process_job(context: BrowserContext, api: Any, job: dict[str, Any], savefrom
     saved_files: list[Path] = []
 
     def save_download(download: Download) -> None:
-        target = download_dir / safe_filename(download.suggested_filename)
+        target = available_download_path(download_dir, download.suggested_filename)
         download.save_as(target)
         saved_files.append(target)
         print(f"Downloaded: {target}")
@@ -206,61 +255,104 @@ def process_job(context: BrowserContext, api: Any, job: dict[str, Any], savefrom
     page.on("download", save_download)
     page.on("popup", close_ad_popup)
     try:
+        deadline = time.monotonic() + 10 * 60
         page.goto(savefrom_url, wait_until="domcontentloaded", timeout=60_000)
         if not is_savefrom_page(page.url):
             raise RuntimeError(f"SaveFrom redirected before input to an unexpected site: {page.url}")
 
-        url_input = first_visible(page, URL_INPUT_SELECTORS)
-        if url_input is None:
-            api.update(job_id, "WAITING_FOR_USER", "Paste the queued link into SaveFrom and start processing, then return to the runner.")
-            notify_user("SaveFrom input was not detected. Complete the paste/process step in Chromium, then press Enter here.")
-            input()
-        else:
+        retry_reason: str | None = None
+        for submission_attempt in range(1, 3):
+            while True:
+                wait_for_captcha(page, api, job_id, deadline)
+                url_input = first_visible(page, URL_INPUT_SELECTORS)
+                if url_input is not None:
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("SaveFrom URL input did not become available")
+                time.sleep(1)
+
             url_input.fill(source_url)
-            submit = first_visible(page, SUBMIT_SELECTORS)
+            submit = find_submit_control(page, url_input)
             if submit is None:
                 url_input.press("Enter")
             else:
                 submit.click()
+            print(f"Submitted link to SaveFrom (attempt {submission_attempt}/2); waiting for processing.")
+            api.update(job_id, "DOWNLOADING", "SaveFrom is processing the submitted link.")
+            attempt_started = time.monotonic()
+            last_wait_log = attempt_started
+            retry_reason = None
 
-        deadline = time.monotonic() + 10 * 60
-        prompted_for_manual_download = False
-        captcha_was_visible = False
-        while time.monotonic() < deadline and not saved_files:
-            if page.url != "about:blank" and not is_savefrom_page(page.url):
-                redirected_to = page.url
-                api.update(job_id, "WAITING_FOR_USER", "An unexpected advertising redirect was blocked in the local browser.")
-                print(f"Blocked unexpected main-page redirect: {redirected_to}")
-                page.go_back(wait_until="domcontentloaded", timeout=30_000)
-                continue
-            if captcha_visible(page):
-                if not captcha_was_visible:
-                    captcha_was_visible = True
-                    api.update(job_id, "WAITING_FOR_USER", "Human verification is open in the local Chromium window.")
-                    notify_user("Solve the verification directly in Chromium. The runner will continue automatically when it closes.")
-                time.sleep(1)
-                continue
-            if captcha_was_visible:
-                captcha_was_visible = False
-                api.update(job_id, "DOWNLOADING", "Verification completed; looking for the generated download.")
-
-            download_control = find_download_control(page)
-            if download_control is not None:
-                api.update(job_id, "DOWNLOADING", "Download control found in the local browser.")
-                direct_file = fetch_generated_download(context, download_control, download_dir, f"{job_id}.mp4")
-                if direct_file is not None:
-                    saved_files.append(direct_file)
-                    print(f"Downloaded generated media directly: {direct_file}")
+            while time.monotonic() < deadline and not saved_files:
+                wait_for_captcha(page, api, job_id, deadline)
+                if page.url != "about:blank" and not is_savefrom_page(page.url):
+                    redirected_to = page.url
+                    print(f"Returning from unexpected processing redirect: {redirected_to}")
+                    page.go_back(wait_until="domcontentloaded", timeout=30_000)
                     continue
-                download_control.click()
-                time.sleep(2)
-                continue
 
-            if not prompted_for_manual_download and time.monotonic() + 30 < deadline:
-                prompted_for_manual_download = True
-                api.update(job_id, "WAITING_FOR_USER", "Finish the visible SaveFrom result/download step in Chromium.")
-                notify_user("If SaveFrom has shown a result, click its real Download button in Chromium. The runner will capture the download.")
-            time.sleep(2)
+                processing_error = visible_processing_error(page) if time.monotonic() - attempt_started >= 2 else None
+                if processing_error:
+                    retry_reason = processing_error
+                    print(f"SaveFrom processing error: {processing_error}")
+                    break
+
+                download_control = find_download_control(page)
+                if download_control is not None:
+                    print("Processed result detected; using its download control.")
+                    api.update(job_id, "DOWNLOADING", "Processed result found; starting the download.")
+                    direct_file = fetch_generated_download(context, download_control, download_dir, f"{job_id}.mp4")
+                    if direct_file is not None:
+                        saved_files.append(direct_file)
+                        print(f"Downloaded generated media directly: {direct_file}")
+                        break
+
+                    result_url = page.url
+                    for click_attempt in range(1, 3):
+                        print(f"Clicking processed download control (attempt {click_attempt}/2).")
+                        download_control.click(timeout=10_000)
+                        click_deadline = min(deadline, time.monotonic() + 20)
+                        while time.monotonic() < click_deadline and not saved_files:
+                            wait_for_captcha(page, api, job_id, deadline)
+                            if page.url not in ("about:blank", result_url):
+                                redirected_to = page.url
+                                print(f"Returning from download redirect: {redirected_to}")
+                                page.go_back(wait_until="domcontentloaded", timeout=30_000)
+                                break
+                            time.sleep(1)
+                        if saved_files:
+                            break
+                        for open_page in context.pages:
+                            if open_page != page and not open_page.is_closed():
+                                open_page.close()
+                        page.bring_to_front()
+                        reacquire_deadline = min(deadline, time.monotonic() + 30)
+                        download_control = None
+                        while time.monotonic() < reacquire_deadline and download_control is None:
+                            wait_for_captcha(page, api, job_id, deadline)
+                            download_control = find_download_control(page)
+                            if download_control is None:
+                                time.sleep(1)
+                        if download_control is None:
+                            break
+                    if not saved_files:
+                        raise RuntimeError("Processed result was found, but no download started after redirect handling")
+                    break
+
+                if time.monotonic() - last_wait_log >= 15:
+                    print("Still waiting for SaveFrom to finish processing...")
+                    last_wait_log = time.monotonic()
+                time.sleep(1)
+
+            if saved_files:
+                break
+            if retry_reason and submission_attempt == 1:
+                print("Retrying the link once after SaveFrom's processing error.")
+                page.goto(savefrom_url, wait_until="domcontentloaded", timeout=60_000)
+                continue
+            if retry_reason:
+                raise RuntimeError(f"SaveFrom could not process the link after one retry: {retry_reason}")
+            break
 
         if not saved_files:
             raise RuntimeError("No browser download was captured within ten minutes")

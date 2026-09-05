@@ -57,4 +57,6 @@ cd local-runner
 
 This standalone mode does not require the backend, Docker, or `LOCAL_RUNNER_TOKEN`. It uses the same visible browser, CAPTCHA assistance, redirect handling, persistent profile, and download directory as queued jobs. Use `RUNNER_DOWNLOAD_DIR` or `--download-dir /path/to/folder` to select another destination.
 
+The filename suggested by the media response/browser is preserved after unsafe filesystem characters are removed. Existing files are never overwritten; a collision is saved with `_2`, `_3`, and so on.
+
 SaveFrom is a third-party website whose interface and terms can change. The user remains responsible for using it only for content they are permitted to download.

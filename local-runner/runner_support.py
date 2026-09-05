@@ -12,6 +12,21 @@ def safe_filename(name: str, fallback: str = "downloaded-video.mp4") -> str:
     return (cleaned[:140] or fallback)
 
 
+def available_download_path(directory: Path, suggested_name: str, fallback: str = "downloaded-video.mp4") -> Path:
+    filename = safe_filename(suggested_name, fallback)
+    candidate = directory / filename
+    if not candidate.exists():
+        return candidate
+    stem = Path(filename).stem
+    suffix = Path(filename).suffix
+    copy_number = 2
+    while True:
+        candidate = directory / f"{stem}_{copy_number}{suffix}"
+        if not candidate.exists():
+            return candidate
+        copy_number += 1
+
+
 def is_savefrom_page(url: str) -> bool:
     host = (urlparse(url).hostname or "").lower().rstrip(".")
     return host == "savefrom.net" or host.endswith(".savefrom.net")
@@ -54,6 +69,40 @@ def read_link_file(path: Path) -> list[str]:
 def link_key(link: str) -> str:
     video_id = re.search(r"/video/(\d+)", link)
     return f"video:{video_id.group(1)}" if video_id else link
+
+
+def score_download_candidate(label: str, href: str, has_download_attribute: bool, in_result: bool) -> int | None:
+    combined = f"{label} {href}".lower()
+    if not href or href == "#" or any(word in combined for word in ("install", "helper", "app now")):
+        return None
+    watermark_free = any(word in combined for word in ("no watermark", "without watermark", "watermark-free", "nowm"))
+    if "watermark" in combined and not watermark_free:
+        return None
+    is_media_url = bool(re.search(r"\.mp4(?:$|[?#])", href, re.IGNORECASE))
+    if not has_download_attribute and not is_media_url and not (in_result and "download" in label.lower()):
+        return None
+    score = 250 if watermark_free else 0
+    score += 100 if has_download_attribute else 0
+    score += 90 if is_media_url else 0
+    score += 60 if in_result else 0
+    score += 35 if "download" in label.lower() else 0
+    return score
+
+
+def is_processing_error(message: str) -> bool:
+    normalized = " ".join(message.lower().split())
+    return any(
+        phrase in normalized
+        for phrase in (
+            "try again",
+            "something went wrong",
+            "could not process",
+            "couldn't process",
+            "link is invalid",
+            "video was not found",
+            "unable to download",
+        )
+    )
 
 
 def read_completed_links(path: Path) -> set[str]:

@@ -3,6 +3,8 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from runner_support import (
+    available_download_path,
+    is_processing_error,
     is_savefrom_interstitial,
     is_savefrom_page,
     link_key,
@@ -12,12 +14,29 @@ from runner_support import (
     record_completed_link,
     remove_link_from_file,
     safe_filename,
+    score_download_candidate,
 )
 
 
 class RunnerSupportTest(unittest.TestCase):
     def test_safe_filename_removes_paths_and_unsafe_characters(self) -> None:
         self.assertEqual(safe_filename("../../A video?.mp4"), "A_video_.mp4")
+
+    def test_available_download_path_never_overwrites_existing_file(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / "original.mp4").write_bytes(b"existing")
+            self.assertEqual(available_download_path(path, "original.mp4"), path / "original_2.mp4")
+            self.assertEqual((path / "original.mp4").read_bytes(), b"existing")
+
+    def test_download_candidate_must_be_media_or_inside_result(self) -> None:
+        self.assertIsNone(score_download_candidate("Download", "/download", False, False))
+        self.assertIsNotNone(score_download_candidate("Download MP4", "/download", False, True))
+        self.assertIsNotNone(score_download_candidate("video", "https://cdn.example/video.mp4", False, False))
+
+    def test_recognizes_retryable_processing_errors(self) -> None:
+        self.assertTrue(is_processing_error("Something went wrong. Please try again."))
+        self.assertFalse(is_processing_error("Paste your video link here"))
 
     def test_savefrom_host_check_rejects_lookalikes(self) -> None:
         self.assertTrue(is_savefrom_page("https://en1.savefrom.net/16Em/download-from-tiktok"))
