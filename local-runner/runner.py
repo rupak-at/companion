@@ -43,6 +43,11 @@ CAPTCHA_SELECTORS = (
 )
 URL_INPUT_SELECTORS = ('input[name="sf_url"]', '#sf_url', 'input[type="url"]', 'input[type="text"]')
 SUBMIT_SELECTORS = (
+    '#sf_submit:visible',
+    '.sf-button:visible',
+    '[class*="submit" i]:visible',
+    '[role="button"]:has-text("Download"):visible',
+    'a:has-text("Download"):visible',
     'button:has-text("Search")',
     'button:has-text("Download")',
     'input[type="submit"][value*="Search" i]',
@@ -133,6 +138,13 @@ def captcha_visible(page: Page) -> bool:
 
 
 def find_submit_control(page: Page, url_input):
+    for label in ("Download", "Search"):
+        try:
+            role_button = page.get_by_role("button", name=re.compile(f"^{label}$", re.IGNORECASE)).first
+            if role_button.is_visible(timeout=500):
+                return role_button
+        except Exception:
+            continue
     try:
         form = url_input.locator("xpath=ancestor::form[1]")
         submit = first_visible(form, FORM_SUBMIT_SELECTORS)
@@ -140,6 +152,37 @@ def find_submit_control(page: Page, url_input):
             return submit
     except Exception:
         pass
+    input_box = url_input.bounding_box()
+    nearby_controls = []
+    for label in ("Download", "Search"):
+        matches = page.get_by_text(label, exact=True)
+        try:
+            count = matches.count()
+        except Exception:
+            continue
+        for index in range(count):
+            try:
+                text = matches.nth(index)
+                clickable = text.locator(
+                    "xpath=ancestor-or-self::*[self::button or self::a or self::input or @role='button' "
+                    "or contains(translate(@class, 'BUTTON', 'button'), 'button')][1]"
+                )
+                if not clickable.is_visible():
+                    continue
+                box = clickable.bounding_box()
+                if box is None:
+                    continue
+                if input_box is None:
+                    distance = index
+                else:
+                    horizontal_gap = abs(box["x"] - (input_box["x"] + input_box["width"]))
+                    vertical_gap = abs((box["y"] + box["height"] / 2) - (input_box["y"] + input_box["height"] / 2))
+                    distance = horizontal_gap + vertical_gap * 5
+                nearby_controls.append((distance, clickable))
+            except Exception:
+                continue
+    if nearby_controls:
+        return min(nearby_controls, key=lambda candidate: candidate[0])[1]
     return first_visible(page, SUBMIT_SELECTORS)
 
 
@@ -274,8 +317,13 @@ def process_job(context: BrowserContext, api: Any, job: dict[str, Any], savefrom
             url_input.fill(source_url)
             submit = find_submit_control(page, url_input)
             if submit is None:
+                print("Submit control was not detected; submitting the URL with Enter.")
                 url_input.press("Enter")
             else:
+                details = submit.evaluate(
+                    "element => ({ tag: element.tagName, id: element.id, className: String(element.className || ''), text: element.textContent.trim() })"
+                )
+                print(f"Clicking SaveFrom submit control: {details}")
                 submit.click()
             print(f"Submitted link to SaveFrom (attempt {submission_attempt}/2); waiting for processing.")
             api.update(job_id, "DOWNLOADING", "SaveFrom is processing the submitted link.")
