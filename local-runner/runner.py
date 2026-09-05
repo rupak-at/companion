@@ -337,7 +337,10 @@ def process_job(
     page.on("popup", close_ad_popup)
     try:
         deadline = time.monotonic() + 10 * 60
-        page.goto(savefrom_url, wait_until="domcontentloaded", timeout=60_000)
+        if page.url == "about:blank" or not is_savefrom_page(page.url):
+            page.goto(savefrom_url, wait_until="domcontentloaded", timeout=60_000)
+        else:
+            print("Reusing the current SaveFrom page; replacing the previous link without reloading.")
         if not is_savefrom_page(page.url):
             raise RuntimeError(f"SaveFrom redirected before input to an unexpected site: {page.url}")
 
@@ -352,6 +355,11 @@ def process_job(
                     raise RuntimeError("SaveFrom URL input did not become available")
                 time.sleep(1)
 
+            previous_download = find_download_control(page)
+            previous_download_href = (
+                previous_download.get_attribute("href") if previous_download is not None else None
+            )
+            url_input.fill("")
             url_input.fill(source_url)
             submit = find_submit_control(page, url_input)
             if submit is None:
@@ -384,6 +392,14 @@ def process_job(
                     break
 
                 download_control = find_download_control(page)
+                if (
+                    download_control is not None
+                    and previous_download_href
+                    and download_control.get_attribute("href") == previous_download_href
+                ):
+                    # SaveFrom can leave the prior result visible while it processes
+                    # the newly entered URL. Never download that stale result again.
+                    download_control = None
                 if download_control is not None:
                     print("Processed result detected; using its download control.")
                     api.update(job_id, "DOWNLOADING", "Processed result found; starting the download.")
@@ -432,8 +448,7 @@ def process_job(
             if saved_files:
                 break
             if retry_reason and submission_attempt == 1:
-                print("Retrying the link once after SaveFrom's processing error.")
-                page.goto(savefrom_url, wait_until="domcontentloaded", timeout=60_000)
+                print("Retrying the link in the same input without reloading SaveFrom.")
                 continue
             if retry_reason:
                 raise RuntimeError(f"SaveFrom could not process the link after one retry: {retry_reason}")

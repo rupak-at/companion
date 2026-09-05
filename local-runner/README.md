@@ -46,7 +46,7 @@ export RUNNER_DOWNLOAD_DIR="/path/to/my/videos"
 
 To keep this setting across terminal sessions, create the ignored `local-runner/.env` file from `.env.example` and set `RUNNER_DOWNLOAD_DIR` there. Existing shell environment values take priority. An explicit `--download-dir /another/path` takes priority over both. All options support `~` and relative paths. The persistent browser profile stays under `local-runner/.local/` and is ignored by Git.
 
-Chromium starts once and reuses the same page for the entire batch, so it does not repeatedly open, close, minimize, or restore a window between links. Advertising tabs are closed immediately without waiting for them to load. Minimized startup remains available with `RUNNER_START_MINIMIZED=true`, but leaving it `false` is recommended when you want Chromium to stay visible in the background without the repeated show/hide effect. When a CAPTCHA is detected, the runner sends a desktop notification; open Chromium yourself, solve it, and return to your other work.
+Chromium starts once and reuses the same page for the entire batch. For each later link, the runner clears and replaces the URL in the existing SaveFrom input instead of reloading the page; it also ignores the previous video's result while the replacement is processing. This prevents repeated tab navigation from pulling Chromium into focus. Advertising tabs are closed immediately without waiting for them to load. Minimized startup remains available with `RUNNER_START_MINIMIZED=true`, but leaving it `false` is recommended when you want Chromium to stay visible in the background. When a CAPTCHA is detected, the runner sends a desktop notification; open Chromium yourself, solve it, and return to your other work.
 
 ## Download URLs from a text file
 
