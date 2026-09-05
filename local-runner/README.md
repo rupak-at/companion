@@ -46,7 +46,7 @@ export RUNNER_DOWNLOAD_DIR="/path/to/my/videos"
 
 To keep this setting across terminal sessions, create the ignored `local-runner/.env` file from `.env.example` and set `RUNNER_DOWNLOAD_DIR` there. Existing shell environment values take priority. An explicit `--download-dir /another/path` takes priority over both. All options support `~` and relative paths. The persistent browser profile stays under `local-runner/.local/` and is ignored by Git.
 
-Chromium starts minimized by default so automated navigation and advertising redirects do not steal focus while you work. When a CAPTCHA is detected, the runner sends a desktop notification; restore Chromium from the taskbar, solve it, and minimize it again. Set `RUNNER_START_MINIMIZED=false` in `local-runner/.env`, or pass `--no-start-minimized`, if you prefer the browser to open visibly.
+Chromium starts minimized by default so automated navigation and advertising redirects do not steal focus while you work. The runner enforces the minimized state through Chromium's window controls because some Linux desktops ignore the normal startup flag, and advertising tabs are closed immediately without waiting for them to load. When a CAPTCHA is detected, the runner sends a desktop notification; restore Chromium from the taskbar, solve it, and minimize it again. Set `RUNNER_START_MINIMIZED=false` in `local-runner/.env`, or pass `--no-start-minimized`, if you prefer the browser to open visibly.
 
 ## Download URLs from a text file
 

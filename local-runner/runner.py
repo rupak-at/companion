@@ -129,6 +129,28 @@ def notify_user(message: str) -> None:
         pass
 
 
+def minimize_chromium_window(context: BrowserContext, page: Page) -> bool:
+    """Minimize the native Chromium window when the launch flag is ignored."""
+    session = None
+    try:
+        session = context.new_cdp_session(page)
+        window = session.send("Browser.getWindowForTarget")
+        session.send(
+            "Browser.setWindowBounds",
+            {"windowId": window["windowId"], "bounds": {"windowState": "minimized"}},
+        )
+        return True
+    except Exception as error:
+        print(f"Could not minimize Chromium through browser controls: {type(error).__name__}", file=sys.stderr)
+        return False
+    finally:
+        if session is not None:
+            try:
+                session.detach()
+            except Exception:
+                pass
+
+
 def first_visible(page: Page, selectors: tuple[str, ...]):
     for selector in selectors:
         locator = page.locator(selector).first
@@ -281,19 +303,31 @@ def fetch_generated_download(context: BrowserContext, control, download_dir: Pat
 
 
 def close_ad_popup(popup: Page) -> None:
-    try:
-        popup.wait_for_load_state("domcontentloaded", timeout=5_000)
-        print(f"Closed popup/redirect tab: {popup.url}")
-        popup.close()
-    except PlaywrightTimeout:
-        if not popup.is_closed():
+    popup_url = popup.url
+    if not popup.is_closed():
+        try:
+            # Do not wait for an advertising page to load: a visible popup can
+            # otherwise steal focus for several seconds before being closed.
             popup.close()
+            print(f"Closed popup/redirect tab immediately: {popup_url}")
+        except Exception:
+            if not popup.is_closed():
+                popup.close()
 
 
-def process_job(context: BrowserContext, api: Any, job: dict[str, Any], savefrom_url: str, download_dir: Path) -> None:
+def process_job(
+    context: BrowserContext,
+    api: Any,
+    job: dict[str, Any],
+    savefrom_url: str,
+    download_dir: Path,
+    start_minimized: bool = True,
+) -> None:
     job_id = str(job["jobId"])
     source_url = str(job["sourceUrl"])
     page = context.new_page()
+    if start_minimized:
+        minimize_chromium_window(context, page)
     saved_files: list[Path] = []
 
     def save_download(download: Download) -> None:
@@ -510,7 +544,14 @@ def main() -> int:
                     job_id = match.group(1) if match else f"batch-{position}"
                     print(f"\n[{position}/{len(batch_links)}] Processing {source_url}")
                     try:
-                        process_job(context, api, {"jobId": job_id, "sourceUrl": source_url}, args.savefrom_url, args.download_dir)
+                        process_job(
+                            context,
+                            api,
+                            {"jobId": job_id, "sourceUrl": source_url},
+                            args.savefrom_url,
+                            args.download_dir,
+                            args.start_minimized,
+                        )
                         record_completed_link(DEFAULT_COMPLETED_LINKS_FILE, source_url)
                         remove_link_from_file(args.links_file, source_url)
                         print(f"Recorded completion and removed link from {args.links_file}")
@@ -529,7 +570,7 @@ def main() -> int:
                     continue
                 print(f"Claimed {job['jobId']}: {job['sourceUrl']}")
                 try:
-                    process_job(context, api, job, args.savefrom_url, args.download_dir)
+                    process_job(context, api, job, args.savefrom_url, args.download_dir, args.start_minimized)
                 except Exception as error:
                     print(f"Job failed: {error}", file=sys.stderr)
         finally:

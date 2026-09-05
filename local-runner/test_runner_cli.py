@@ -1,6 +1,6 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import MagicMock, call, patch
 import unittest
 
 import runner
@@ -8,6 +8,22 @@ from runner import parse_args
 
 
 class RunnerCliTest(unittest.TestCase):
+    def test_minimize_uses_chromium_window_controls(self) -> None:
+        context = MagicMock()
+        page = MagicMock()
+        session = context.new_cdp_session.return_value
+        session.send.return_value = {"windowId": 42}
+
+        self.assertTrue(runner.minimize_chromium_window(context, page))
+        self.assertEqual(
+            session.send.call_args_list,
+            [
+                call("Browser.getWindowForTarget"),
+                call("Browser.setWindowBounds", {"windowId": 42, "bounds": {"windowState": "minimized"}}),
+            ],
+        )
+        session.detach.assert_called_once_with()
+
     def test_browser_starts_minimized_by_default(self) -> None:
         with patch.dict("os.environ", {}, clear=True), patch("sys.argv", ["runner.py"]):
             self.assertTrue(parse_args().start_minimized)
