@@ -15,3 +15,5 @@ server/.env
 local-runner/.venv/
 local-runner/.local/
 local-runner/__pycache__/
+local-runner/.env
+local-runner/downloaded_links.txt

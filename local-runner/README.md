@@ -44,11 +44,11 @@ export RUNNER_DOWNLOAD_DIR="/path/to/my/videos"
 .venv/bin/python runner.py
 ```
 
-An explicit `--download-dir /another/path` takes priority over the environment setting. Both options support `~` and relative paths. The persistent browser profile stays under `local-runner/.local/` and is ignored by Git.
+To keep this setting across terminal sessions, create the ignored `local-runner/.env` file from `.env.example` and set `RUNNER_DOWNLOAD_DIR` there. Existing shell environment values take priority. An explicit `--download-dir /another/path` takes priority over both. All options support `~` and relative paths. The persistent browser profile stays under `local-runner/.local/` and is ignored by Git.
 
 ## Download URLs from a text file
 
-Put one complete URL on each line. Blank lines, comment lines beginning with `#`, and duplicate URLs are ignored. After each successful download, that URL is removed atomically from the file; failed and unprocessed URLs remain so the same command can safely resume later. Then run:
+Put one complete URL on each line. Blank lines, comment lines beginning with `#`, and duplicate URLs are ignored. After each successful download, the URL is appended to the ignored `local-runner/downloaded_links.txt` ledger and removed atomically from the input file. On restart, links whose TikTok video ID is already in the ledger are removed without being downloaded again. Failed and unprocessed URLs remain so the same command can safely resume later. Then run:
 
 ```sh
 cd local-runner

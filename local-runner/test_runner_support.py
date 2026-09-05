@@ -2,7 +2,17 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from runner_support import is_savefrom_interstitial, is_savefrom_page, read_env_value, read_link_file, remove_link_from_file, safe_filename
+from runner_support import (
+    is_savefrom_interstitial,
+    is_savefrom_page,
+    link_key,
+    read_completed_links,
+    read_env_value,
+    read_link_file,
+    record_completed_link,
+    remove_link_from_file,
+    safe_filename,
+)
 
 
 class RunnerSupportTest(unittest.TestCase):
@@ -45,6 +55,15 @@ class RunnerSupportTest(unittest.TestCase):
             path.write_text("# remaining queue\nhttps://example.com/one\nhttps://example.com/two\nhttps://example.com/one\n", encoding="utf-8")
             remove_link_from_file(path, "https://example.com/one")
             self.assertEqual(path.read_text(encoding="utf-8"), "# remaining queue\nhttps://example.com/two\n")
+
+    def test_completed_ledger_recognizes_same_tiktok_video(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "downloaded_links.txt"
+            original = "https://www.tiktok.com/@one/video/123?first=1"
+            record_completed_link(path, original)
+            record_completed_link(path, "https://www.tiktok.com/@other/video/123?second=1")
+            self.assertEqual(path.read_text(encoding="utf-8"), f"{original}\n")
+            self.assertIn(link_key("https://www.tiktok.com/@other/video/123"), read_completed_links(path))
 
 
 if __name__ == "__main__":

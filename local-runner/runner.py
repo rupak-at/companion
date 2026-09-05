@@ -16,10 +16,21 @@ from urllib.request import Request, urlopen
 
 from playwright.sync_api import BrowserContext, Download, Page, TimeoutError as PlaywrightTimeout, sync_playwright
 
-from runner_support import is_savefrom_page, read_env_value, read_link_file, remove_link_from_file, safe_filename
+from runner_support import (
+    is_savefrom_page,
+    link_key,
+    read_completed_links,
+    read_env_value,
+    read_link_file,
+    record_completed_link,
+    remove_link_from_file,
+    safe_filename,
+)
 
 DEFAULT_SAVEFROM_URL = "https://en1.savefrom.net/16Em/download-from-tiktok"
 DEFAULT_DOWNLOAD_DIR = Path.home() / "Downloads" / "Ambient Companion"
+RUNNER_DIRECTORY = Path(__file__).resolve().parent
+DEFAULT_COMPLETED_LINKS_FILE = RUNNER_DIRECTORY / "downloaded_links.txt"
 CAPTCHA_SELECTORS = (
     '#output-captcha-dialog:visible',
     'iframe[src*="captcha" i]',
@@ -279,7 +290,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def load_runner_environment() -> None:
+    local_env = RUNNER_DIRECTORY / ".env"
+    for key in ("RUNNER_API_URL", "RUNNER_ID", "SAVEFROM_URL", "RUNNER_DOWNLOAD_DIR", "LOCAL_RUNNER_TOKEN"):
+        value = read_env_value(local_env, key)
+        if value is not None:
+            os.environ.setdefault(key, value)
+
+
 def main() -> int:
+    load_runner_environment()
     args = parse_args()
     if not is_savefrom_page(args.savefrom_url):
         print("SAVEFROM_URL must use savefrom.net or one of its subdomains.", file=sys.stderr)
@@ -295,12 +315,19 @@ def main() -> int:
         try:
             args.links_file = args.links_file.expanduser().resolve()
             batch_links = read_link_file(args.links_file)
+            completed_keys = read_completed_links(DEFAULT_COMPLETED_LINKS_FILE)
+            already_completed = [link for link in batch_links if link_key(link) in completed_keys]
+            for completed_link in already_completed:
+                remove_link_from_file(args.links_file, completed_link)
+            batch_links = [link for link in batch_links if link_key(link) not in completed_keys]
+            if already_completed:
+                print(f"Removed {len(already_completed)} previously downloaded link(s) from the input file.")
         except (OSError, ValueError) as error:
             print(f"Cannot read links file: {error}", file=sys.stderr)
             return 2
         if not batch_links:
-            print("The links file contains no URLs.", file=sys.stderr)
-            return 2
+            print("No pending URLs remain in the links file.")
+            return 0
         api: Any = LocalBatchStatus()
     else:
         repo_env = Path(__file__).resolve().parent.parent / "server" / ".env"
@@ -324,8 +351,9 @@ def main() -> int:
                     print(f"\n[{position}/{len(batch_links)}] Processing {source_url}")
                     try:
                         process_job(context, api, {"jobId": job_id, "sourceUrl": source_url}, args.savefrom_url, args.download_dir)
+                        record_completed_link(DEFAULT_COMPLETED_LINKS_FILE, source_url)
                         remove_link_from_file(args.links_file, source_url)
-                        print(f"Removed completed link from {args.links_file}")
+                        print(f"Recorded completion and removed link from {args.links_file}")
                     except Exception as error:
                         failures += 1
                         print(f"Skipped {source_url}: {error}", file=sys.stderr)

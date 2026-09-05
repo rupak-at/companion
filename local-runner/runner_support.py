@@ -51,6 +51,27 @@ def read_link_file(path: Path) -> list[str]:
     return links
 
 
+def link_key(link: str) -> str:
+    video_id = re.search(r"/video/(\d+)", link)
+    return f"video:{video_id.group(1)}" if video_id else link
+
+
+def read_completed_links(path: Path) -> set[str]:
+    if not path.exists():
+        return set()
+    return {link_key(line.strip()) for line in path.read_text(encoding="utf-8-sig").splitlines() if line.strip()}
+
+
+def record_completed_link(path: Path, link: str) -> None:
+    if link_key(link) in read_completed_links(path):
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as completed:
+        completed.write(f"{link}\n")
+        completed.flush()
+        os.fsync(completed.fileno())
+
+
 def remove_link_from_file(path: Path, completed_link: str) -> None:
     original = path.read_text(encoding="utf-8-sig")
     remaining_lines = [line for line in original.splitlines(keepends=True) if line.strip() != completed_link]
