@@ -34,7 +34,7 @@ app.post("/api/v1/downloads", async (request, reply) => {
   try { url = await validatePublicUrl(parsed.data.url); }
   catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
   const provider = classifyUrl(url)!;
-  const usesLocalRunner = provider === "TIKTOK" || provider === "INSTAGRAM";
+  const usesLocalRunner = provider === "TIKTOK" || provider === "INSTAGRAM" || provider === "FACEBOOK";
   if (!usesLocalRunner) {
     const active = await prisma.downloadJob.count({ where: { userId, status: { in: ["QUEUED", "PROCESSING"] } } });
     if (active >= 2) return reply.code(429).send({ error: "TOO_MANY_ACTIVE_JOBS" });

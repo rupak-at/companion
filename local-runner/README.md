@@ -1,6 +1,6 @@
 # Local browser runner
 
-This optional runner processes TikTok and Instagram jobs in a visible Chromium window on the user's computer. It fills the queued URL into SaveFrom, watches for a browser download, and reports status to the backend.
+This optional runner processes TikTok, Instagram, and Facebook jobs in a visible Chromium window on the user's computer. It fills the queued URL into SaveFrom, watches for a browser download, and reports status to the backend.
 
 The runner opens SaveFrom's TikTok-specific page, submits with its Search control, and searches the main result and embedded frames for a generated download. Unexpected advertising popups are closed. If the main tab is redirected away from the configured SaveFrom domain, the runner returns to SaveFrom and records a user-visible warning on the job.
 

@@ -1,16 +1,16 @@
 import dns from "node:dns/promises";
 import { isIP } from "node:net";
 
-const allowedHosts = ["tiktok.com", "instagram.com"];
 const mediaExtensions = new Set(["mp4", "webm", "mov", "jpg", "jpeg", "png", "webp"]);
 
-export type Provider = "TIKTOK" | "INSTAGRAM" | "DIRECT_VIDEO" | "DIRECT_IMAGE";
+export type Provider = "TIKTOK" | "INSTAGRAM" | "FACEBOOK" | "DIRECT_VIDEO" | "DIRECT_IMAGE";
 
 export function classifyUrl(url: URL): Provider | null {
   const host = url.hostname.toLowerCase().replace(/\.$/, "");
   const extension = url.pathname.split(".").pop()?.toLowerCase() ?? "";
   if (hostMatches(host, "tiktok.com")) return "TIKTOK";
   if (hostMatches(host, "instagram.com")) return "INSTAGRAM";
+  if (hostMatches(host, "facebook.com") || hostMatches(host, "fb.watch")) return "FACEBOOK";
   if (["mp4", "webm", "mov"].includes(extension)) return "DIRECT_VIDEO";
   if (["jpg", "jpeg", "png", "webp"].includes(extension)) return "DIRECT_IMAGE";
   return null;

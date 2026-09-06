@@ -26,6 +26,7 @@ enum LinkProvider {
   DIRECT_IMAGE
   TIKTOK
   INSTAGRAM
+  FACEBOOK
 }
 
 model DownloadJob {

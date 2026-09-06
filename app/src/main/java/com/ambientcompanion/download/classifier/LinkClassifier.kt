@@ -18,6 +18,8 @@ object LinkClassifier {
         val (type, name) = when {
             host.isDomainOrSubdomainOf("tiktok.com") -> LinkType.TIKTOK to "TikTok"
             host.isDomainOrSubdomainOf("instagram.com") -> LinkType.INSTAGRAM to "Instagram"
+            host.isDomainOrSubdomainOf("facebook.com") || host.isDomainOrSubdomainOf("fb.watch") ->
+                LinkType.FACEBOOK to "Facebook"
             pathExtension in videoExtensions -> LinkType.DIRECT_VIDEO to "Direct video"
             pathExtension in imageExtensions -> LinkType.DIRECT_IMAGE to "Direct image"
             else -> LinkType.UNKNOWN to "Unsupported link"

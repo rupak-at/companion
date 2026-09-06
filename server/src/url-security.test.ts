@@ -5,6 +5,9 @@ describe("URL security", () => {
   it("does not trust lookalike provider domains", () => {
     expect(classifyUrl(new URL("https://tiktok.com.attacker.example/v"))).toBeNull();
     expect(classifyUrl(new URL("https://vm.tiktok.com/v"))).toBe("TIKTOK");
+    expect(classifyUrl(new URL("https://www.facebook.com/reel/123"))).toBe("FACEBOOK");
+    expect(classifyUrl(new URL("https://fb.watch/abc"))).toBe("FACEBOOK");
+    expect(classifyUrl(new URL("https://facebook.com.attacker.example/v"))).toBeNull();
   });
 
   it("blocks private, loopback, link-local, mapped, and multicast addresses", () => {

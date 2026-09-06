@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "LinkProvider" ADD VALUE IF NOT EXISTS 'FACEBOOK';
