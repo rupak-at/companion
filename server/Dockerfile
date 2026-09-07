@@ -25,4 +25,4 @@ COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
 RUN mkdir -p /var/lib/ambient-downloads && chown -R node:node /app /var/lib/ambient-downloads
 USER node
 EXPOSE 8080
-CMD ["node", "dist/api.js"]
+CMD ["sh", "-c", "npm run prisma:generate && npm run prisma:migrate && exec node dist/api.js"]

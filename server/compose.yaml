@@ -2,7 +2,6 @@ services:
   api:
     build: .
     restart: unless-stopped
-    command: ["node", "dist/api.js"]
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379
@@ -17,6 +16,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+      start_period: 30s
     volumes:
       - downloads:/var/lib/ambient-downloads
     security_opt:
@@ -32,6 +32,8 @@ services:
       DOWNLOAD_DIR: /var/lib/ambient-downloads
     depends_on:
       redis:
+        condition: service_healthy
+      api:
         condition: service_healthy
     volumes:
       - downloads:/var/lib/ambient-downloads
