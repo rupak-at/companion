@@ -52,6 +52,7 @@ model DownloadJob {
   updatedAt    DateTime       @updatedAt
 
   @@index([userId, createdAt])
+  @@unique([userId, sourceUrl])
   @@index([status, expiresAt])
   @@index([status, leaseExpiresAt, createdAt])
 }

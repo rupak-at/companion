@@ -34,18 +34,26 @@ app.post("/api/v1/downloads", async (request, reply) => {
   try { url = await validatePublicUrl(parsed.data.url); }
   catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
   const provider = classifyUrl(url)!;
+  const jobKey = { userId_sourceUrl: { userId, sourceUrl: url.href } };
+  const existingJob = await prisma.downloadJob.findUnique({ where: jobKey });
+  if (existingJob) {
+    return reply.code(202).send({ jobId: existingJob.id, status: existingJob.status, duplicate: true });
+  }
+
   const usesLocalRunner = provider === "TIKTOK" || provider === "INSTAGRAM" || provider === "FACEBOOK";
   if (!usesLocalRunner) {
     const active = await prisma.downloadJob.count({ where: { userId, status: { in: ["QUEUED", "PROCESSING"] } } });
     if (active >= 2) return reply.code(429).send({ error: "TOO_MANY_ACTIVE_JOBS" });
   }
-  const job = await prisma.downloadJob.create({ data: {
+  const created = await prisma.downloadJob.createMany({ data: {
     userId, sourceUrl: url.href, provider, status: usesLocalRunner ? "WAITING_FOR_LOCAL_RUNNER" : "QUEUED",
-  } });
-  if (!usesLocalRunner) {
+  }, skipDuplicates: true });
+  const job = await prisma.downloadJob.findUnique({ where: jobKey });
+  if (!job) throw new Error("DOWNLOAD_JOB_CREATE_FAILED");
+  if (created.count === 1 && !usesLocalRunner) {
     await downloadsQueue.add("download", { jobId: job.id }, { jobId: job.id, attempts: 2, removeOnComplete: 100, removeOnFail: 100 });
   }
-  return reply.code(202).send({ jobId: job.id, status: job.status });
+  return reply.code(202).send({ jobId: job.id, status: job.status, duplicate: created.count === 0 });
 });
 
 app.get<{ Params: { jobId: string } }>("/api/v1/downloads/:jobId", async (request, reply) => {
