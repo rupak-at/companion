@@ -29,6 +29,38 @@ class RunnerCliTest(unittest.TestCase):
         )
         notify_user.assert_called_once()
 
+    @patch("runner.fetch_generated_download")
+    @patch("runner.visible_processing_error", return_value=None)
+    @patch("runner.wait_for_captcha", return_value=False)
+    @patch("runner.find_submit_control")
+    @patch("runner.first_visible")
+    @patch("runner.find_download_control")
+    def test_processed_result_clicks_before_direct_request(
+        self, find_download, first_visible, find_submit, _captcha, _error, fetch
+    ) -> None:
+        page = MagicMock()
+        page.url = runner.DEFAULT_SAVEFROM_URL
+        control = MagicMock()
+        find_download.side_effect = [None, control]
+        callbacks = {}
+        page.on.side_effect = lambda event, callback: callbacks.update({event: callback})
+        download = MagicMock()
+        download.suggested_filename = "video.mp4"
+        # Browser events are delivered when Playwright is pumped after the click.
+        page.wait_for_timeout.side_effect = lambda _ms: callbacks["download"](download)
+
+        with TemporaryDirectory() as directory:
+            runner.process_job(
+                MagicMock(), page, MagicMock(),
+                {"jobId": "job-1", "sourceUrl": "https://vt.tiktok.com/example/"},
+                runner.DEFAULT_SAVEFROM_URL, Path(directory),
+            )
+            download.save_as.assert_called_once_with(Path(directory) / "video.mp4")
+
+        control.click.assert_called_once_with(timeout=5_000, no_wait_after=True)
+        fetch.assert_not_called()
+        page.remove_listener.assert_any_call("download", callbacks["download"])
+
     def test_minimize_uses_chromium_window_controls(self) -> None:
         context = MagicMock()
         page = MagicMock()

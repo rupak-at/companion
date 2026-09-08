@@ -237,7 +237,7 @@ def wait_for_captcha(
     while captcha_visible(page):
         if time.monotonic() >= deadline:
             raise RuntimeError("Timed out waiting for human verification")
-        time.sleep(1)
+        page.wait_for_timeout(250)
     api.update(job_id, "DOWNLOADING", "Verification completed; continuing SaveFrom processing.")
     print("Verification completed; continuing.")
     return True
@@ -368,7 +368,7 @@ def process_job(
                     break
                 if time.monotonic() >= deadline:
                     raise RuntimeError("SaveFrom URL input did not become available")
-                time.sleep(1)
+                page.wait_for_timeout(250)
 
             previous_download = find_download_control(page)
             previous_download_href = (
@@ -418,16 +418,10 @@ def process_job(
                 if download_control is not None:
                     print("Processed result detected; using its download control.")
                     api.update(job_id, "DOWNLOADING", "Processed result found; starting the download.")
-                    direct_file = fetch_generated_download(context, download_control, download_dir, f"{job_id}.mp4")
-                    if direct_file is not None:
-                        saved_files.append(direct_file)
-                        print(f"Downloaded generated media directly: {direct_file}")
-                        break
-
                     result_url = page.url
                     for click_attempt in range(1, 3):
                         print(f"Clicking processed download control (attempt {click_attempt}/2).")
-                        download_control.click(timeout=10_000)
+                        download_control.click(timeout=5_000, no_wait_after=True)
                         click_deadline = min(deadline, time.monotonic() + 20)
                         while time.monotonic() < click_deadline and not saved_files:
                             wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
@@ -436,7 +430,7 @@ def process_job(
                                 print(f"Returning from download redirect: {redirected_to}")
                                 page.go_back(wait_until="domcontentloaded", timeout=30_000)
                                 break
-                            time.sleep(1)
+                            page.wait_for_timeout(250)
                         if saved_files:
                             break
                         for open_page in context.pages:
@@ -448,9 +442,15 @@ def process_job(
                             wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
                             download_control = find_download_control(page)
                             if download_control is None:
-                                time.sleep(1)
+                                page.wait_for_timeout(250)
                         if download_control is None:
                             break
+                    if not saved_files and download_control is not None:
+                        print("Browser download did not start; trying the generated media URL.")
+                        direct_file = fetch_generated_download(context, download_control, download_dir, f"{job_id}.mp4")
+                        if direct_file is not None:
+                            saved_files.append(direct_file)
+                            print(f"Downloaded generated media directly: {direct_file}")
                     if not saved_files:
                         raise RuntimeError("Processed result was found, but no download started after redirect handling")
                     break
@@ -458,7 +458,7 @@ def process_job(
                 if time.monotonic() - last_wait_log >= 15:
                     print("Still waiting for SaveFrom to finish processing...")
                     last_wait_log = time.monotonic()
-                time.sleep(1)
+                page.wait_for_timeout(250)
 
             if saved_files:
                 break
