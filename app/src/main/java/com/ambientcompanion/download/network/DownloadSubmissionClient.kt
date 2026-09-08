@@ -16,7 +16,7 @@ class DownloadSubmissionClient(context: Context) {
     private val preferences = context.getSharedPreferences("download_auth", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun saveForLater(sourceUrl: String): String = withContext(Dispatchers.IO) {
+    suspend fun saveForLater(sourceUrl: String): DownloadSubmissionResult = withContext(Dispatchers.IO) {
         requireConfiguration()
         var accessToken = accessToken()
         var response = request(
@@ -34,8 +34,7 @@ class DownloadSubmissionClient(context: Context) {
             )
         }
         if (response.code !in 200..299) throw SubmissionException(response.message(response.code))
-        json.parseToJsonElement(response.body).jsonObject["jobId"]?.jsonPrimitive?.content
-            ?: throw SubmissionException("The server saved no job ID.")
+        parseDownloadSubmission(response.body)
     }
 
     private fun requireConfiguration() {
@@ -113,7 +112,18 @@ class DownloadSubmissionClient(context: Context) {
     }
 }
 
+data class DownloadSubmissionResult(val jobId: String, val alreadySaved: Boolean)
+
 class SubmissionException(message: String) : Exception(message)
+
+internal fun parseDownloadSubmission(body: String): DownloadSubmissionResult {
+    val payload = runCatching { Json.parseToJsonElement(body).jsonObject }
+        .getOrElse { throw SubmissionException("The server returned an invalid response.") }
+    val jobId = payload["jobId"]?.jsonPrimitive?.content
+        ?: throw SubmissionException("The server saved no job ID.")
+    val alreadySaved = payload["duplicate"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+    return DownloadSubmissionResult(jobId, alreadySaved)
+}
 
 internal fun parseApiError(body: String, statusCode: Int): String {
     val payload = runCatching { Json.parseToJsonElement(body).jsonObject }.getOrNull()

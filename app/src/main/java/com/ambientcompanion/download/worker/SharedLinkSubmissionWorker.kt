@@ -21,9 +21,10 @@ class SharedLinkSubmissionWorker(context: Context, parameters: WorkerParameters)
     override suspend fun doWork(): Result {
         val sourceUrl = inputData.getString(SOURCE_URL) ?: return Result.failure(errorData("Missing shared URL."))
         return try {
-            val jobId = DownloadSubmissionClient(applicationContext).saveForLater(sourceUrl)
-            reportStatus("Link saved for later ✓", success = true)
-            Result.success(Data.Builder().putString(JOB_ID, jobId).build())
+            val submission = DownloadSubmissionClient(applicationContext).saveForLater(sourceUrl)
+            val message = if (submission.alreadySaved) "Already saved to Companion ✓" else "Link saved for later ✓"
+            reportStatus(message, success = true)
+            Result.success(Data.Builder().putString(JOB_ID, submission.jobId).build())
         } catch (error: IOException) {
             if (runAttemptCount < MAX_ATTEMPTS) {
                 Result.retry()

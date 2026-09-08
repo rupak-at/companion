@@ -5,6 +5,22 @@ import org.junit.Test
 
 class DownloadSubmissionClientTest {
     @Test
+    fun `recognizes a link the server already saved`() {
+        assertEquals(
+            DownloadSubmissionResult("existing-job", alreadySaved = true),
+            parseDownloadSubmission("""{"jobId":"existing-job","status":"READY","duplicate":true}"""),
+        )
+    }
+
+    @Test
+    fun `recognizes a newly saved link`() {
+        assertEquals(
+            DownloadSubmissionResult("new-job", alreadySaved = false),
+            parseDownloadSubmission("""{"jobId":"new-job","status":"QUEUED","duplicate":false}"""),
+        )
+    }
+
+    @Test
     fun `shows Supabase msg and error code`() {
         assertEquals(
             "Anonymous sign-ins are disabled (anonymous_provider_disabled)",
