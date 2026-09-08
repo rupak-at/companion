@@ -342,13 +342,19 @@ def process_job(
     source_url = str(job["sourceUrl"])
     saved_files: list[Path] = []
 
-    def save_download(download: Download) -> None:
-        target = available_download_path(download_dir, download.suggested_filename)
-        download.save_as(target)
-        saved_files.append(target)
-        print(f"Downloaded: {target}")
+    started_downloads: list[Download] = []
 
-    page.on("download", save_download)
+    def capture_download(download: Download) -> None:
+        # Record the start immediately; save_as waits for completion and belongs
+        # in the main flow, not inside a reentrant browser event callback.
+        if started_downloads:
+            if download is not started_downloads[0]:
+                download.cancel()
+            return
+        started_downloads.append(download)
+        print("Browser download started; waiting for the file to finish.", flush=True)
+
+    page.on("download", capture_download)
     page.on("popup", close_ad_popup)
     try:
         deadline = time.monotonic() + 10 * 60
@@ -392,7 +398,7 @@ def process_job(
             last_wait_log = attempt_started
             retry_reason = None
 
-            while time.monotonic() < deadline and not saved_files:
+            while time.monotonic() < deadline and not saved_files and not started_downloads:
                 wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
                 if page.url != "about:blank" and not is_savefrom_page(page.url):
                     redirected_to = page.url
@@ -420,10 +426,12 @@ def process_job(
                     api.update(job_id, "DOWNLOADING", "Processed result found; starting the download.")
                     result_url = page.url
                     for click_attempt in range(1, 3):
+                        if started_downloads:
+                            break
                         print(f"Clicking processed download control (attempt {click_attempt}/2).")
                         download_control.click(timeout=5_000, no_wait_after=True)
                         click_deadline = min(deadline, time.monotonic() + 20)
-                        while time.monotonic() < click_deadline and not saved_files:
+                        while time.monotonic() < click_deadline and not saved_files and not started_downloads:
                             wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
                             if page.url not in ("about:blank", result_url):
                                 redirected_to = page.url
@@ -431,27 +439,27 @@ def process_job(
                                 page.go_back(wait_until="domcontentloaded", timeout=30_000)
                                 break
                             page.wait_for_timeout(250)
-                        if saved_files:
+                        if saved_files or started_downloads:
                             break
                         for open_page in context.pages:
                             if open_page != page and not open_page.is_closed():
                                 open_page.close()
                         reacquire_deadline = min(deadline, time.monotonic() + 30)
                         download_control = None
-                        while time.monotonic() < reacquire_deadline and download_control is None:
+                        while time.monotonic() < reacquire_deadline and download_control is None and not started_downloads:
                             wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
                             download_control = find_download_control(page)
                             if download_control is None:
                                 page.wait_for_timeout(250)
                         if download_control is None:
                             break
-                    if not saved_files and download_control is not None:
+                    if not saved_files and not started_downloads and download_control is not None:
                         print("Browser download did not start; trying the generated media URL.")
                         direct_file = fetch_generated_download(context, download_control, download_dir, f"{job_id}.mp4")
                         if direct_file is not None:
                             saved_files.append(direct_file)
                             print(f"Downloaded generated media directly: {direct_file}")
-                    if not saved_files:
+                    if not saved_files and not started_downloads:
                         raise RuntimeError("Processed result was found, but no download started after redirect handling")
                     break
 
@@ -460,7 +468,7 @@ def process_job(
                     last_wait_log = time.monotonic()
                 page.wait_for_timeout(250)
 
-            if saved_files:
+            if saved_files or started_downloads:
                 break
             if retry_reason and submission_attempt == 1:
                 print("Retrying the link in the same input without reloading SaveFrom.")
@@ -468,6 +476,13 @@ def process_job(
             if retry_reason:
                 raise RuntimeError(f"SaveFrom could not process the link after one retry: {retry_reason}")
             break
+
+        if started_downloads:
+            download = started_downloads[0]
+            target = available_download_path(download_dir, download.suggested_filename)
+            download.save_as(target)
+            saved_files.append(target)
+            print(f"Downloaded: {target}")
 
         if not saved_files:
             raise RuntimeError("No browser download was captured within ten minutes")
@@ -478,7 +493,7 @@ def process_job(
         api.update(job_id, "FAILED", str(error)[:500], "LOCAL_BROWSER_FAILED")
         raise
     finally:
-        page.remove_listener("download", save_download)
+        page.remove_listener("download", capture_download)
         page.remove_listener("popup", close_ad_popup)
 
 

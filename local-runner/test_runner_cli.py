@@ -49,9 +49,22 @@ class RunnerCliTest(unittest.TestCase):
         # Browser events are delivered when Playwright is pumped after the click.
         page.wait_for_timeout.side_effect = lambda _ms: callbacks["download"](download)
 
+        duplicate = MagicMock()
+        api = MagicMock()
+
+        def finish_download(_target):
+            # A second event arriving while save_as waits must not save twice.
+            self.assertFalse(any(
+                item.args[1] == "COMPLETED" for item in api.update.call_args_list
+            ))
+            callbacks["download"](duplicate)
+            control.click.assert_called_once()
+            fetch.assert_not_called()
+
+        download.save_as.side_effect = finish_download
         with TemporaryDirectory() as directory:
             runner.process_job(
-                MagicMock(), page, MagicMock(),
+                MagicMock(), page, api,
                 {"jobId": "job-1", "sourceUrl": "https://vt.tiktok.com/example/"},
                 runner.DEFAULT_SAVEFROM_URL, Path(directory),
             )
@@ -59,6 +72,9 @@ class RunnerCliTest(unittest.TestCase):
 
         control.click.assert_called_once_with(timeout=5_000, no_wait_after=True)
         fetch.assert_not_called()
+        duplicate.cancel.assert_called_once()
+        duplicate.save_as.assert_not_called()
+        self.assertEqual(api.update.call_args.args[1], "COMPLETED")
         page.remove_listener.assert_any_call("download", callbacks["download"])
 
     def test_minimize_uses_chromium_window_controls(self) -> None:
