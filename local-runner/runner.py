@@ -29,6 +29,10 @@ from runner_support import (
 )
 
 
+class RunnerApiUnavailable(RuntimeError):
+    """A temporary API or database connectivity failure."""
+
+
 class HumanVerificationRequired(RuntimeError):
     pass
 
@@ -113,9 +117,26 @@ class RunnerApi:
             if allow_empty and error.code == 204:
                 return None
             detail = error.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"Runner API returned HTTP {error.code}: {detail}") from error
+            error_type = RunnerApiUnavailable if error.code in {408, 429} or error.code >= 500 else RuntimeError
+            raise error_type(f"Runner API returned HTTP {error.code}: {detail}") from error
         except URLError as error:
-            raise RuntimeError(f"Cannot reach runner API: {error.reason}") from error
+            raise RunnerApiUnavailable(f"Cannot reach runner API: {error.reason}") from error
+        except (TimeoutError, ConnectionError) as error:
+            raise RunnerApiUnavailable(f"Runner API connection failed: {error}") from error
+
+
+def claim_when_available(api: RunnerApi, page: Page, once: bool = False) -> dict[str, Any] | None:
+    delay = 5
+    while True:
+        try:
+            return api.claim()
+        except RunnerApiUnavailable as error:
+            if once:
+                raise
+            print(f"Queue temporarily unavailable: {error}\nRetrying in {delay}s.", file=sys.stderr, flush=True)
+            # Keep browser events responsive while the backend recovers.
+            page.wait_for_timeout(delay * 1000)
+            delay = min(delay * 2, 60)
 
 
 class LocalBatchStatus:
@@ -616,7 +637,11 @@ def main() -> int:
                 print(f"Batch finished: {len(batch_links) - failures} completed, {failures} failed.")
                 return 1 if failures else 0
             while True:
-                job = api.claim()
+                try:
+                    job = claim_when_available(api, page, once=args.once)
+                except RuntimeError as error:
+                    print(f"Cannot claim a job: {error}", file=sys.stderr)
+                    return 1
                 if not job:
                     if args.once:
                         print("No queued local-runner jobs.")

@@ -1,3 +1,5 @@
+from io import BytesIO
+from urllib.error import HTTPError, URLError
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, call, patch
@@ -8,6 +10,44 @@ from runner import parse_args
 
 
 class RunnerCliTest(unittest.TestCase):
+    def test_claim_recovers_with_capped_backoff(self) -> None:
+        api, page = MagicMock(), MagicMock()
+        job = {"jobId": "next"}
+        api.claim.side_effect = [runner.RunnerApiUnavailable("database offline")] * 6 + [job]
+        self.assertEqual(runner.claim_when_available(api, page), job)
+        self.assertEqual(
+            page.wait_for_timeout.call_args_list,
+            [call(ms) for ms in (5000, 10000, 20000, 40000, 60000, 60000)],
+        )
+
+    def test_claim_does_not_retry_permanent_errors_or_once(self) -> None:
+        for error, once in ((RuntimeError("unauthorized"), False),
+                            (runner.RunnerApiUnavailable("offline"), True)):
+            with self.subTest(error=error, once=once):
+                api, page = MagicMock(), MagicMock()
+                api.claim.side_effect = error
+                with self.assertRaises(RuntimeError):
+                    runner.claim_when_available(api, page, once=once)
+                api.claim.assert_called_once()
+                page.wait_for_timeout.assert_not_called()
+
+    @patch("runner.urlopen")
+    def test_api_classifies_temporary_failures(self, urlopen) -> None:
+        api = runner.RunnerApi("http://localhost", "test-token", "runner")
+        for error in (
+            HTTPError("http://localhost", 500, "error", {}, BytesIO(b'{"code":"P1001"}')),
+            URLError("offline"),
+            TimeoutError("timed out"),
+        ):
+            with self.subTest(error=error):
+                urlopen.side_effect = error
+                with self.assertRaises(runner.RunnerApiUnavailable):
+                    api.claim()
+        urlopen.side_effect = HTTPError("http://localhost", 401, "error", {}, BytesIO(b"unauthorized"))
+        with self.assertRaises(RuntimeError) as caught:
+            api.claim()
+        self.assertNotIsInstance(caught.exception, runner.RunnerApiUnavailable)
+
     @patch("runner.notify_user")
     @patch("runner.captcha_visible", return_value=True)
     def test_headless_captcha_requests_visible_restart(self, _captcha_visible, notify_user) -> None:

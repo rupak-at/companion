@@ -6,6 +6,33 @@ The runner opens SaveFrom's TikTok-specific page, submits with its Search contro
 
 It does **not** solve CAPTCHA, upload screenshots, transmit CAPTCHA answers, or copy browser cookies to the server. When verification appears, the job becomes `WAITING_FOR_USER`; solve it directly in Chromium and the runner continues automatically when the dialog closes.
 
+## Daily use: no extra arguments
+
+After completing setup below, create or edit `local-runner/.env` with these settings (preserve any other existing entries):
+
+```dotenv
+RUNNER_DOWNLOAD_DIR=/media/rupak/USB/db_v
+RUNNER_HEADLESS=false
+RUNNER_START_MINIMIZED=false
+```
+
+From the project root, start the runner:
+
+```sh
+cd local-runner
+.venv/bin/python runner.py
+```
+
+This opens Chromium visibly, lets you solve CAPTCHA directly, and saves videos to the configured folder. Set `RUNNER_HEADLESS=true` for background operation; set `RUNNER_START_MINIMIZED=true` to start a visible browser minimized. Shell environment variables override `.env`, and command-line flags override both.
+
+After code or `.env` changes, stop the old runner with `Ctrl+C` and start it again using the same command. An already running Python process does not load these updates. Run only one instance with the same browser profile. The updated runner prints `Browser download started; waiting for the file to finish.` when a download begins.
+
+## Backend connection failures
+
+A `P1001` error mentioning Supabase means the backend cannot reach its database. A video already reported as `Downloaded:` is saved locally; an error claiming the next job does not remove it.
+
+During normal queue operation, temporary claim failures (network errors, timeouts, HTTP 408/429/5xx) retry after 5, 10, 20, 40, then 60 seconds until the backend recovers. The browser stays open. Persistent database failures still require restoring the backend's database connectivity. Authentication and other permanent claim errors exit with a concise message. `--once` exits on a claim failure instead of retrying. This recovery applies to claiming jobs; it does not retry failed status updates.
+
 ## Setup
 
 1. Generate the shared runner token without displaying it:
@@ -37,7 +64,7 @@ It does **not** solve CAPTCHA, upload screenshots, transmit CAPTCHA answers, or 
    .venv/bin/python runner.py
    ```
 
-Use `--once` to process one available job or exit. Downloads are saved to `~/Downloads/Ambient Companion/` unless `RUNNER_DOWNLOAD_DIR` is set:
+Use `--once` to drain available jobs and exit when the queue is empty. Downloads are saved to `~/Downloads/Ambient Companion/` unless `RUNNER_DOWNLOAD_DIR` is set:
 
 ```sh
 export RUNNER_DOWNLOAD_DIR="/path/to/my/videos"
