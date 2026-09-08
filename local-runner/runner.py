@@ -25,9 +25,12 @@ from runner_support import (
     read_env_value,
     read_link_file,
     record_completed_link,
-    remove_link_from_file,
     score_download_candidate,
 )
+
+
+class HumanVerificationRequired(RuntimeError):
+    pass
 
 DEFAULT_SAVEFROM_URL = "https://en1.savefrom.net/16Em/download-from-tiktok"
 DEFAULT_DOWNLOAD_DIR = Path.home() / "Downloads" / "Ambient Companion"
@@ -215,9 +218,20 @@ def find_submit_control(page: Page, url_input):
     return first_visible(page, SUBMIT_SELECTORS)
 
 
-def wait_for_captcha(page: Page, api: Any, job_id: str, deadline: float) -> bool:
+def wait_for_captcha(
+    page: Page,
+    api: Any,
+    job_id: str,
+    deadline: float,
+    allow_user_interaction: bool,
+) -> bool:
     if not captcha_visible(page):
         return False
+    if not allow_user_interaction:
+        message = "Human verification is required. Restart the runner with --no-headless to complete it."
+        api.update(job_id, "WAITING_FOR_USER", message)
+        notify_user(message)
+        raise HumanVerificationRequired(message)
     api.update(job_id, "WAITING_FOR_USER", "Human verification is open in the local Chromium window.")
     notify_user("Solve the verification directly in Chromium. The runner will continue automatically when it closes.")
     while captcha_visible(page):
@@ -322,6 +336,7 @@ def process_job(
     job: dict[str, Any],
     savefrom_url: str,
     download_dir: Path,
+    allow_user_interaction: bool = True,
 ) -> None:
     job_id = str(job["jobId"])
     source_url = str(job["sourceUrl"])
@@ -347,7 +362,7 @@ def process_job(
         retry_reason: str | None = None
         for submission_attempt in range(1, 3):
             while True:
-                wait_for_captcha(page, api, job_id, deadline)
+                wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
                 url_input = first_visible(page, URL_INPUT_SELECTORS)
                 if url_input is not None:
                     break
@@ -378,7 +393,7 @@ def process_job(
             retry_reason = None
 
             while time.monotonic() < deadline and not saved_files:
-                wait_for_captcha(page, api, job_id, deadline)
+                wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
                 if page.url != "about:blank" and not is_savefrom_page(page.url):
                     redirected_to = page.url
                     print(f"Returning from unexpected processing redirect: {redirected_to}")
@@ -415,7 +430,7 @@ def process_job(
                         download_control.click(timeout=10_000)
                         click_deadline = min(deadline, time.monotonic() + 20)
                         while time.monotonic() < click_deadline and not saved_files:
-                            wait_for_captcha(page, api, job_id, deadline)
+                            wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
                             if page.url not in ("about:blank", result_url):
                                 redirected_to = page.url
                                 print(f"Returning from download redirect: {redirected_to}")
@@ -430,7 +445,7 @@ def process_job(
                         reacquire_deadline = min(deadline, time.monotonic() + 30)
                         download_control = None
                         while time.monotonic() < reacquire_deadline and download_control is None:
-                            wait_for_captcha(page, api, job_id, deadline)
+                            wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
                             download_control = find_download_control(page)
                             if download_control is None:
                                 time.sleep(1)
@@ -457,6 +472,8 @@ def process_job(
         if not saved_files:
             raise RuntimeError("No browser download was captured within ten minutes")
         api.update(job_id, "COMPLETED", f"Saved locally as {saved_files[-1].name}")
+    except HumanVerificationRequired:
+        raise
     except Exception as error:
         api.update(job_id, "FAILED", str(error)[:500], "LOCAL_BROWSER_FAILED")
         raise
@@ -479,6 +496,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--links-file", type=Path, help="Process one URL per line without using the backend queue")
     parser.add_argument(
+        "--headless",
+        action=argparse.BooleanOptionalAction,
+        default=environment_flag("RUNNER_HEADLESS", True),
+        help="Run without a desktop window (enabled by default; use --no-headless for verification)",
+    )
+    parser.add_argument(
         "--start-minimized",
         action=argparse.BooleanOptionalAction,
         default=environment_flag("RUNNER_START_MINIMIZED", True),
@@ -495,6 +518,7 @@ def load_runner_environment() -> None:
         "RUNNER_ID",
         "SAVEFROM_URL",
         "RUNNER_DOWNLOAD_DIR",
+        "RUNNER_HEADLESS",
         "RUNNER_START_MINIMIZED",
         "LOCAL_RUNNER_TOKEN",
     ):
@@ -522,11 +546,9 @@ def main() -> int:
             batch_links = read_link_file(args.links_file)
             completed_keys = read_completed_links(DEFAULT_COMPLETED_LINKS_FILE)
             already_completed = [link for link in batch_links if link_key(link) in completed_keys]
-            for completed_link in already_completed:
-                remove_link_from_file(args.links_file, completed_link)
             batch_links = [link for link in batch_links if link_key(link) not in completed_keys]
             if already_completed:
-                print(f"Removed {len(already_completed)} previously downloaded link(s) from the input file.")
+                print(f"Skipped {len(already_completed)} previously downloaded link(s); the input file was unchanged.")
         except (OSError, ValueError) as error:
             print(f"Cannot read links file: {error}", file=sys.stderr)
             return 2
@@ -544,13 +566,13 @@ def main() -> int:
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=args.profile_dir,
-            headless=False,
+            headless=args.headless,
             accept_downloads=True,
-            args=["--start-minimized"] if args.start_minimized else [],
+            args=["--start-minimized"] if args.start_minimized and not args.headless else [],
         )
         try:
             page = context.pages[0] if context.pages else context.new_page()
-            if args.start_minimized:
+            if args.start_minimized and not args.headless:
                 minimize_chromium_window(context, page)
             if batch_links is not None:
                 failures = 0
@@ -566,10 +588,13 @@ def main() -> int:
                             {"jobId": job_id, "sourceUrl": source_url},
                             args.savefrom_url,
                             args.download_dir,
+                            allow_user_interaction=not args.headless,
                         )
                         record_completed_link(DEFAULT_COMPLETED_LINKS_FILE, source_url)
-                        remove_link_from_file(args.links_file, source_url)
-                        print(f"Recorded completion and removed link from {args.links_file}")
+                        print(f"Recorded completion; kept the link in {args.links_file}")
+                    except HumanVerificationRequired as error:
+                        print(str(error), file=sys.stderr)
+                        return 3
                     except Exception as error:
                         failures += 1
                         print(f"Skipped {source_url}: {error}", file=sys.stderr)
@@ -585,7 +610,18 @@ def main() -> int:
                     continue
                 print(f"Claimed {job['jobId']}: {job['sourceUrl']}")
                 try:
-                    process_job(context, page, api, job, args.savefrom_url, args.download_dir)
+                    process_job(
+                        context,
+                        page,
+                        api,
+                        job,
+                        args.savefrom_url,
+                        args.download_dir,
+                        allow_user_interaction=not args.headless,
+                    )
+                except HumanVerificationRequired as error:
+                    print(str(error), file=sys.stderr)
+                    return 3
                 except Exception as error:
                     print(f"Job failed: {error}", file=sys.stderr)
         finally:

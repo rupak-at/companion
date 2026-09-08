@@ -12,7 +12,6 @@ from runner_support import (
     read_env_value,
     read_link_file,
     record_completed_link,
-    remove_link_from_file,
     safe_filename,
     score_download_candidate,
 )
@@ -67,13 +66,6 @@ class RunnerSupportTest(unittest.TestCase):
             path.write_text("not a URL\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "line 1"):
                 read_link_file(path)
-
-    def test_removes_only_the_completed_link(self) -> None:
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "links.txt"
-            path.write_text("# remaining queue\nhttps://example.com/one\nhttps://example.com/two\nhttps://example.com/one\n", encoding="utf-8")
-            remove_link_from_file(path, "https://example.com/one")
-            self.assertEqual(path.read_text(encoding="utf-8"), "# remaining queue\nhttps://example.com/two\n")
 
     def test_completed_ledger_recognizes_same_tiktok_video(self) -> None:
         with TemporaryDirectory() as directory:

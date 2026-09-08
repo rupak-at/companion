@@ -46,11 +46,19 @@ export RUNNER_DOWNLOAD_DIR="/path/to/my/videos"
 
 To keep this setting across terminal sessions, create the ignored `local-runner/.env` file from `.env.example` and set `RUNNER_DOWNLOAD_DIR` there. Existing shell environment values take priority. An explicit `--download-dir /another/path` takes priority over both. All options support `~` and relative paths. The persistent browser profile stays under `local-runner/.local/` and is ignored by Git.
 
-Chromium starts minimized by default and reuses the same page for the entire batch, so queued links can be processed without taking focus from your work. For each later link, the runner clears and replaces the URL in the existing SaveFrom input instead of reloading the page; it also ignores the previous video's result while the replacement is processing. Advertising tabs are closed immediately without waiting for them to load. Set `RUNNER_START_MINIMIZED=false` or pass `--no-start-minimized` only when you want Chromium to remain visible. When a CAPTCHA is detected, the runner sends a desktop notification; open Chromium yourself, solve it, and return to your other work.
+Chromium runs headlessly by default and reuses the same page for the entire batch, so there is no desktop browser window that can take focus from your work. For each later link, the runner clears and replaces the URL in the existing SaveFrom input instead of reloading the page; it also ignores the previous video's result while the replacement is processing. Advertising tabs are closed immediately without waiting for them to load. If SaveFrom requires a CAPTCHA, the runner keeps the link pending, sends a desktop notification, and exits with instructions. Restart it with `--no-headless` to complete the verification in a visible window; headed mode starts minimized unless `RUNNER_START_MINIMIZED=false` or `--no-start-minimized` is used.
+
+To solve a CAPTCHA for a links file, restart the same command in visible mode:
+
+```sh
+.venv/bin/python runner.py --no-headless --links-file /absolute/path/to/available_links.txt
+```
+
+Open Chromium from the taskbar after the notification, solve the CAPTCHA, and leave the window open while that download completes. Then stop the visible runner with `Ctrl+C` and restart the normal command to continue without a desktop window.
 
 ## Download URLs from a text file
 
-Put one complete URL on each line. Blank lines, comment lines beginning with `#`, and duplicate URLs are ignored. After each successful download, the URL is appended to the ignored `local-runner/downloaded_links.txt` ledger and removed atomically from the input file. On restart, links whose TikTok video ID is already in the ledger are removed without being downloaded again. Failed and unprocessed URLs remain so the same command can safely resume later. Then run:
+Put one complete URL on each line. Blank lines, comment lines beginning with `#`, and duplicate URLs are ignored. The runner never modifies this input file. After each successful download, the URL is appended to the ignored `local-runner/downloaded_links.txt` ledger. On restart, links already recorded in the ledger are skipped without being downloaded again, while every original line remains available in your source file. Then run:
 
 ```sh
 cd local-runner
