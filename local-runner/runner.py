@@ -481,8 +481,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--start-minimized",
         action=argparse.BooleanOptionalAction,
-        default=environment_flag("RUNNER_START_MINIMIZED", False),
-        help="Start Chromium minimized (disabled by default)",
+        default=environment_flag("RUNNER_START_MINIMIZED", True),
+        help="Start Chromium minimized (enabled by default; use --no-start-minimized to show it)",
     )
     parser.add_argument("--once", action="store_true", help="Exit when no queued job is available")
     return parser.parse_args()
