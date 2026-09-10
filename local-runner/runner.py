@@ -76,7 +76,7 @@ ERROR_SELECTORS = (
     '#sf_result [class*="alert" i]:visible',
     '[class*="result"] [class*="error" i]:visible',
     '[role="alert"]:visible',
-    "text=/try again|something went wrong|could not process|couldn't process/i",
+    "text=/try again|something went wrong|could not process|couldn't process|link\\s+(?:(?:is|was)\\s+)?not\\s+found/i",
 )
 
 

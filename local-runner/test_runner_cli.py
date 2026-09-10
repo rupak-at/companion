@@ -10,6 +10,32 @@ from runner import parse_args
 
 
 class RunnerCliTest(unittest.TestCase):
+    @patch("runner.time.monotonic", side_effect=range(0, 600, 3))
+    @patch("runner.visible_processing_error", return_value="Link not found")
+    @patch("runner.wait_for_captcha", return_value=False)
+    @patch("runner.find_submit_control")
+    @patch("runner.first_visible")
+    @patch("runner.find_download_control", return_value=None)
+    def test_link_not_found_resubmits_once_before_failing(
+        self, _download, first_visible, find_submit, _captcha, _error, _clock
+    ) -> None:
+        page, api = MagicMock(), MagicMock()
+        page.url = runner.DEFAULT_SAVEFROM_URL
+        source_url = "https://vt.tiktok.com/example/"
+        with TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(RuntimeError, "after one retry: Link not found"):
+                runner.process_job(
+                    MagicMock(), page, api,
+                    {"jobId": "job-1", "sourceUrl": source_url},
+                    runner.DEFAULT_SAVEFROM_URL, Path(directory),
+                )
+        self.assertEqual(find_submit.return_value.click.call_count, 2)
+        self.assertEqual(
+            first_visible.return_value.fill.call_args_list,
+            [call(""), call(source_url), call(""), call(source_url)],
+        )
+        self.assertEqual(api.update.call_args.args[1], "FAILED")
+
     def test_claim_recovers_with_capped_backoff(self) -> None:
         api, page = MagicMock(), MagicMock()
         job = {"jobId": "next"}

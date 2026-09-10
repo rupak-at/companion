@@ -98,6 +98,9 @@ def is_processing_error(message: str) -> bool:
             "could not process",
             "couldn't process",
             "link is invalid",
+            "link not found",
+            "link is not found",
+            "link was not found",
             "video was not found",
             "unable to download",
         )

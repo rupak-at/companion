@@ -96,6 +96,8 @@ This standalone mode does not require the backend, Docker, or `LOCAL_RUNNER_TOKE
 
 Once a processed result appears, the runner clicks its download control first and checks for browser events every 250 ms while waiting. Once a browser download starts, retries stop and the runner waits for that file to finish; additional download events for the same job are cancelled. A direct media request is used only if the browser download does not start after the click retries.
 
+If SaveFrom reports “link not found” or another recognized processing error after submitting a URL, the runner submits the same URL once more. If that attempt also fails, it reports the failure instead of retrying indefinitely.
+
 The filename suggested by the media response/browser is preserved after unsafe filesystem characters are removed. Existing files are never overwritten; a collision is saved with `_2`, `_3`, and so on.
 
 SaveFrom is a third-party website whose interface and terms can change. The user remains responsible for using it only for content they are permitted to download.

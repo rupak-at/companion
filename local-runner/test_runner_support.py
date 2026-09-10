@@ -36,6 +36,9 @@ class RunnerSupportTest(unittest.TestCase):
     def test_recognizes_retryable_processing_errors(self) -> None:
         self.assertTrue(is_processing_error("Something went wrong. Please try again."))
         self.assertFalse(is_processing_error("Paste your video link here"))
+        for message in ("Link not found", "LINK IS NOT FOUND", "Link was not found", "Link\nnot found"):
+            with self.subTest(message=message):
+                self.assertTrue(is_processing_error(message))
 
     def test_savefrom_host_check_rejects_lookalikes(self) -> None:
         self.assertTrue(is_savefrom_page("https://en1.savefrom.net/16Em/download-from-tiktok"))
