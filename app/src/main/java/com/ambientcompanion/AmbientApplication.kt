@@ -32,6 +32,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
+import com.google.firebase.messaging.FirebaseMessaging
+import com.ambientcompanion.download.network.DownloadSubmissionClient
 
 class AmbientApplication : Application() {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -65,7 +67,16 @@ class AmbientApplication : Application() {
             .build()
             .create(WeatherApi::class.java)
         contextRepository = ContextRepository(preferences, LocationProvider(this), WeatherRepository(api, preferences))
+        registerPushToken()
         observeResourcePolicy()
+    }
+
+    private fun registerPushToken() {
+        FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+            applicationScope.launch(Dispatchers.IO) {
+                runCatching { DownloadSubmissionClient(this@AmbientApplication).registerDevice(token) }
+            }
+        }
     }
 
     private fun observeResourcePolicy() {

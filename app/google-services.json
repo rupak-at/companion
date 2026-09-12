@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "666927213774",
+    "project_id": "companion-29bbc",
+    "storage_bucket": "companion-29bbc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:666927213774:android:403f07b43eb5b1afcef49f",
+        "android_client_info": {
+          "package_name": "com.ambientcompanion"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDnuvlx2BjshFJQ2p77yR2DflEurD1wusA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

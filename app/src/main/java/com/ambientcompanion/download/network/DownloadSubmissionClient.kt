@@ -37,6 +37,16 @@ class DownloadSubmissionClient(context: Context) {
         parseDownloadSubmission(response.body)
     }
 
+    suspend fun registerDevice(token: String) = withContext(Dispatchers.IO) {
+        requireConfiguration()
+        val response = request(
+            url = "${BuildConfig.DOWNLOAD_API_BASE_URL.trimEnd('/')}/api/v1/devices",
+            body = buildJsonObject { put("token", token); put("platform", "android") }.toString(),
+            bearerToken = accessToken(),
+        )
+        if (response.code !in 200..299) throw SubmissionException(response.message(response.code))
+    }
+
     private fun requireConfiguration() {
         if (BuildConfig.DOWNLOAD_API_BASE_URL.isBlank() || BuildConfig.SUPABASE_URL.isBlank() || BuildConfig.SUPABASE_ANON_KEY.isBlank()) {
             throw SubmissionException("Configure DOWNLOAD_API_BASE_URL, SUPABASE_URL, and SUPABASE_ANON_KEY in local.properties.")

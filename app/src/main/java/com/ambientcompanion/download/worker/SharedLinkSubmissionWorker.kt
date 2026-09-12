@@ -22,7 +22,11 @@ class SharedLinkSubmissionWorker(context: Context, parameters: WorkerParameters)
         val sourceUrl = inputData.getString(SOURCE_URL) ?: return Result.failure(errorData("Missing shared URL."))
         return try {
             val submission = DownloadSubmissionClient(applicationContext).saveForLater(sourceUrl)
-            val message = if (submission.alreadySaved) "Already saved to Companion ✓" else "Link saved for later ✓"
+            val message = if (submission.alreadySaved) {
+                "This link is already in your download queue."
+            } else {
+                "Link queued for download."
+            }
             reportStatus(message, success = true)
             Result.success(Data.Builder().putString(JOB_ID, submission.jobId).build())
         } catch (error: IOException) {

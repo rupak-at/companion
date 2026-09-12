@@ -2,6 +2,7 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
+    id("com.google.gms.google-services")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
@@ -46,6 +47,7 @@ android {
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
@@ -58,6 +60,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("androidx.work:work-runtime-ktx:2.11.2")
     implementation("com.google.android.gms:play-services-location:21.4.0")
+    implementation("com.google.firebase:firebase-messaging")
     implementation("com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0")
     implementation("com.squareup.okhttp3:logging-interceptor:5.5.0")
     implementation("com.squareup.retrofit2:retrofit:3.0.0")

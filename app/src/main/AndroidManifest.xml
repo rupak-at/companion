@@ -72,6 +72,14 @@
             android:foregroundServiceType="mediaProjection" />
 
         <service
+            android:name=".notifications.CompanionMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <service
             android:name=".quicksettings.CompanionTileService"
             android:exported="true"
             android:icon="@drawable/ic_stat_ambient"

@@ -10,6 +10,7 @@ import { downloadsQueue, prisma } from "./services.js";
 import { classifyUrl, validatePublicUrl } from "./url-security.js";
 import { parseJobId } from "./request-validation.js";
 import { isRunnerAuthorized } from "./runner-auth.js";
+import { notifyCaptchaRequired } from "./push.js";
 
 const app = Fastify({ logger: true, bodyLimit: 16_384 });
 const createBody = z.object({ url: z.string().url().max(2048), format: z.enum(["video", "image"]).optional() });
@@ -20,9 +21,23 @@ const runnerUpdate = z.object({
   message: z.string().trim().max(500).optional(),
   errorCode: z.string().trim().max(80).optional(),
 });
+const deviceTokenBody = z.object({ token: z.string().trim().min(20).max(4096), platform: z.literal("android") });
 const leaseDurationMs = 30 * 60_000;
 
 app.get("/health", async () => ({ status: "ok" }));
+
+app.post("/api/v1/devices", async (request, reply) => {
+  const userId = await authenticate(request.headers.authorization);
+  if (!userId) return reply.code(401).send({ error: "UNAUTHORIZED" });
+  const parsed = deviceTokenBody.safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ error: "INVALID_DEVICE" });
+  await prisma.deviceToken.upsert({
+    where: { token: parsed.data.token },
+    create: { userId, token: parsed.data.token, platform: parsed.data.platform },
+    update: { userId, platform: parsed.data.platform },
+  });
+  return reply.code(204).send();
+});
 
 app.post("/api/v1/downloads", async (request, reply) => {
   const userId = await authenticate(request.headers.authorization);
@@ -118,6 +133,9 @@ app.post<{ Params: { jobId: string } }>("/api/v1/runner/jobs/:jobId/status", asy
     errorCode: failed ? parsed.data.errorCode ?? "LOCAL_RUNNER_FAILED" : null,
     errorMessage: failed ? parsed.data.message ?? "The local browser runner failed." : null,
   } });
+  if (parsed.data.status === "WAITING_FOR_USER" && existing.status !== "WAITING_FOR_USER") {
+    await notifyCaptchaRequired(job.userId, job.id, parsed.data.message ?? "Complete verification in your local browser.");
+  }
   return { jobId: job.id, status: job.status };
 });
 
