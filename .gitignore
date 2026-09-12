@@ -17,3 +17,6 @@ local-runner/.local/
 local-runner/__pycache__/
 local-runner/.env
 local-runner/downloaded_links.txt
+
+app/google-services.json
+app/google-services (2).json
