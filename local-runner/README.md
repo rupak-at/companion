@@ -71,6 +71,8 @@ export RUNNER_DOWNLOAD_DIR="/path/to/my/videos"
 .venv/bin/python runner.py
 ```
 
+To retry database jobs that failed previously, run `.venv/bin/python runner.py retry --once` (or use `--retry --once`). This also processes queued jobs. Each previously failed job gets one new attempt during this run; a job that fails again waits for another retry invocation. Retry mode does not apply to `--links-file`.
+
 To keep this setting across terminal sessions, create the ignored `local-runner/.env` file from `.env.example` and set `RUNNER_DOWNLOAD_DIR` there. Existing shell environment values take priority. An explicit `--download-dir /another/path` takes priority over both. All options support `~` and relative paths. The persistent browser profile stays under `local-runner/.local/` and is ignored by Git.
 
 Chromium runs headlessly by default and reuses the same page for the entire batch, so there is no desktop browser window that can take focus from your work. For each later link, the runner clears and replaces the URL in the existing SaveFrom input instead of reloading the page; it also ignores the previous video's result while the replacement is processing. Advertising tabs are closed immediately without waiting for them to load. If SaveFrom requires a CAPTCHA, the runner keeps the link pending, sends a desktop notification, and exits with instructions. Restart it with `--no-headless` to complete the verification in a visible window; headed mode starts minimized unless `RUNNER_START_MINIMIZED=false` or `--no-start-minimized` is used.

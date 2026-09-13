@@ -8,6 +8,7 @@ import socket
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -88,13 +89,17 @@ def environment_flag(name: str, default: bool) -> bool:
 
 
 class RunnerApi:
-    def __init__(self, base_url: str, token: str, runner_id: str) -> None:
+    def __init__(self, base_url: str, token: str, runner_id: str, retry_failed_before: str | None = None) -> None:
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.runner_id = runner_id
+        self.retry_failed_before = retry_failed_before
 
     def claim(self) -> dict[str, Any] | None:
-        return self._request("POST", "/api/v1/runner/jobs/claim", {"runnerId": self.runner_id}, allow_empty=True)
+        payload = {"runnerId": self.runner_id}
+        if self.retry_failed_before:
+            payload["retryFailedBefore"] = self.retry_failed_before
+        return self._request("POST", "/api/v1/runner/jobs/claim", payload, allow_empty=True)
 
     def update(self, job_id: str, status: str, message: str, error_code: str | None = None) -> None:
         payload = {"runnerId": self.runner_id, "status": status, "message": message}
@@ -520,6 +525,7 @@ def process_job(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visible local browser runner for Ambient Companion downloads")
+    parser.add_argument("command", nargs="?", choices=("retry",), help="Retry previously failed database jobs")
     parser.add_argument("--api-url", default=os.getenv("RUNNER_API_URL", "http://127.0.0.1:8080"))
     parser.add_argument("--runner-id", default=os.getenv("RUNNER_ID", f"{socket.gethostname()}-browser"))
     parser.add_argument("--savefrom-url", default=os.getenv("SAVEFROM_URL", DEFAULT_SAVEFROM_URL))
@@ -544,6 +550,7 @@ def parse_args() -> argparse.Namespace:
         help="Start Chromium minimized (enabled by default; use --no-start-minimized to show it)",
     )
     parser.add_argument("--once", action="store_true", help="Exit when no queued job is available")
+    parser.add_argument("--retry", action="store_true", help="Retry database jobs that failed before this run started")
     return parser.parse_args()
 
 
@@ -566,6 +573,10 @@ def load_runner_environment() -> None:
 def main() -> int:
     load_runner_environment()
     args = parse_args()
+    args.retry = args.retry or args.command == "retry"
+    if args.retry and args.links_file:
+        print("--retry applies to database jobs; omit --links-file.", file=sys.stderr)
+        return 2
     if not is_savefrom_page(args.savefrom_url):
         print("SAVEFROM_URL must use savefrom.net or one of its subdomains.", file=sys.stderr)
         return 2
@@ -598,7 +609,8 @@ def main() -> int:
         if not token or len(token) < 32:
             print("LOCAL_RUNNER_TOKEN is missing or shorter than 32 characters. Add the same token to server/.env.", file=sys.stderr)
             return 2
-        api = RunnerApi(args.api_url, token, args.runner_id)
+        retry_failed_before = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z") if args.retry else None
+        api = RunnerApi(args.api_url, token, args.runner_id, retry_failed_before)
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=args.profile_dir,

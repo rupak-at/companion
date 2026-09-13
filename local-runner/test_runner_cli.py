@@ -1,4 +1,5 @@
 from io import BytesIO
+import json
 from urllib.error import HTTPError, URLError
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -10,6 +11,23 @@ from runner import parse_args
 
 
 class RunnerCliTest(unittest.TestCase):
+    @patch("runner.urlopen")
+    def test_retry_claim_includes_cutoff(self, urlopen) -> None:
+        api = runner.RunnerApi("http://localhost", "test-token", "runner", "2026-09-13T12:00:00.000Z")
+        urlopen.return_value.__enter__.return_value.read.return_value = b""
+        api.claim()
+        request = urlopen.call_args.args[0]
+        self.assertEqual(
+            json.loads(request.data),
+            {"runnerId": "runner", "retryFailedBefore": "2026-09-13T12:00:00.000Z"},
+        )
+
+    def test_retry_command_and_flag(self) -> None:
+        for arguments in (("retry",), ("--retry",)):
+            with self.subTest(arguments=arguments), patch("runner.sys.argv", ["runner.py", *arguments]):
+                args = parse_args()
+                self.assertTrue(args.retry or args.command == "retry")
+
     @patch("runner.time.monotonic", side_effect=range(0, 600, 3))
     @patch("runner.visible_processing_error", return_value="Link not found")
     @patch("runner.wait_for_captcha", return_value=False)
