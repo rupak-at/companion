@@ -39,11 +39,19 @@ class DownloadSubmissionClient(context: Context) {
 
     suspend fun registerDevice(token: String) = withContext(Dispatchers.IO) {
         requireConfiguration()
-        val response = request(
+        var response = request(
             url = "${BuildConfig.DOWNLOAD_API_BASE_URL.trimEnd('/')}/api/v1/devices",
             body = buildJsonObject { put("token", token); put("platform", "android") }.toString(),
             bearerToken = accessToken(),
         )
+        if (response.code == HttpURLConnection.HTTP_UNAUTHORIZED) {
+            clearSession()
+            response = request(
+                url = "${BuildConfig.DOWNLOAD_API_BASE_URL.trimEnd('/')}/api/v1/devices",
+                body = buildJsonObject { put("token", token); put("platform", "android") }.toString(),
+                bearerToken = accessToken(),
+            )
+        }
         if (response.code !in 200..299) throw SubmissionException(response.message(response.code))
     }
 
