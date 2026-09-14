@@ -12,6 +12,160 @@ from runner import parse_args
 
 
 class RunnerCliTest(unittest.TestCase):
+    def setUp(self) -> None:
+        processing_patch = patch("runner.savefrom_processing_visible", return_value=False)
+        self.processing_visible = processing_patch.start()
+        self.addCleanup(processing_patch.stop)
+
+    @patch("runner.wait_for_captcha", return_value=False)
+    @patch("runner.find_converter_download_control")
+    def test_converter_handoff_clicks_next_download_step(self, find_control, _captcha) -> None:
+        page = MagicMock()
+        page.url = "https://tt.sf-converter.com/get?payload=first"
+        first, second = MagicMock(), MagicMock()
+        first.get_attribute.return_value = "/next"
+        first.inner_text.return_value = "Download"
+        second.get_attribute.return_value = "/file"
+        second.inner_text.return_value = "Download video"
+        started_downloads = []
+        first.click.side_effect = lambda **_kwargs: setattr(page, "url", "https://tt.sf-converter.com/next")
+        second.click.side_effect = lambda **_kwargs: started_downloads.append(MagicMock())
+        find_control.side_effect = lambda _page: first if page.url.endswith("first") else second
+
+        self.assertTrue(runner.follow_converter_handoff(
+            page, started_downloads, runner.time.monotonic() + 60, MagicMock(), "job-1", True,
+            runner.DEFAULT_SAVEFROM_URL,
+        ))
+        first.click.assert_called_once()
+        second.click.assert_called_once()
+
+    @patch("runner.fetch_generated_download")
+    @patch("runner.follow_converter_handoff")
+    @patch("runner.visible_processing_error", return_value=None)
+    @patch("runner.wait_for_captcha", return_value=False)
+    @patch("runner.find_submit_control")
+    @patch("runner.first_visible")
+    @patch("runner.find_download_control")
+    def test_job_stays_on_converter_until_download_starts(
+        self, find_download, first_visible, find_submit, _captcha, _error, follow_handoff, fetch
+    ) -> None:
+        page, api = MagicMock(), MagicMock()
+        page.url = runner.DEFAULT_SAVEFROM_URL
+        control = MagicMock()
+        control.get_attribute.return_value = "/get?payload=test"
+        control.evaluate.return_value = "https://tt.sf-converter.com/"
+        control.click.side_effect = lambda **_kwargs: setattr(page, "url", "https://tt.sf-converter.com/get?payload=test")
+        find_download.side_effect = [None, control]
+        download = MagicMock()
+        download.suggested_filename = "video.mp4"
+        follow_handoff.side_effect = lambda _page, started, *_args: started.append(download)
+
+        with TemporaryDirectory() as directory:
+            runner.process_job(
+                MagicMock(), page, api,
+                {"jobId": "job-1", "sourceUrl": "https://vt.tiktok.com/example/"},
+                runner.DEFAULT_SAVEFROM_URL, Path(directory),
+            )
+
+        page.go_back.assert_not_called()
+        download.save_as.assert_called_once()
+        fetch.assert_not_called()
+
+    @patch("runner.fetch_generated_download")
+    @patch("runner.visible_processing_error", return_value=None)
+    @patch("runner.wait_for_captcha", return_value=False)
+    @patch("runner.find_submit_control")
+    @patch("runner.first_visible")
+    @patch("runner.find_download_control")
+    def test_waits_for_processing_banner_before_clicking_visible_result(
+        self, find_download, _first_visible, _find_submit, _captcha, _error, fetch
+    ) -> None:
+        page, api = MagicMock(), MagicMock()
+        page.url = runner.DEFAULT_SAVEFROM_URL
+        control = MagicMock()
+        find_download.side_effect = [None, control]
+        self.processing_visible.side_effect = [True, False]
+        callbacks = {}
+        page.on.side_effect = lambda event, callback: callbacks.update({event: callback})
+        download = MagicMock()
+        download.suggested_filename = "video.mp4"
+
+        def pump_events(_ms):
+            if control.click.called:
+                callbacks["download"](download)
+            else:
+                control.click.assert_not_called()
+
+        page.wait_for_timeout.side_effect = pump_events
+        with TemporaryDirectory() as directory:
+            runner.process_job(
+                MagicMock(), page, api,
+                {"jobId": "job-1", "sourceUrl": "https://vt.tiktok.com/example/"},
+                runner.DEFAULT_SAVEFROM_URL, Path(directory),
+            )
+
+        self.assertEqual(self.processing_visible.call_count, 2)
+        control.click.assert_called_once()
+        download.save_as.assert_called_once()
+        fetch.assert_not_called()
+
+    @patch("runner.fetch_generated_download")
+    @patch("runner.follow_converter_handoff")
+    @patch("runner.visible_processing_error", return_value=None)
+    @patch("runner.wait_for_captcha", return_value=False)
+    @patch("runner.find_submit_control")
+    @patch("runner.first_visible")
+    @patch("runner.find_download_control")
+    def test_job_follows_converter_popup_instead_of_closing_it(
+        self, find_download, first_visible, find_submit, _captcha, _error, follow_handoff, fetch
+    ) -> None:
+        page, popup, context, api = MagicMock(), MagicMock(), MagicMock(), MagicMock()
+        page.url = runner.DEFAULT_SAVEFROM_URL
+        popup.url = "https://tt.sf-converter.com/get?payload=test"
+        popup.is_closed.return_value = False
+        context.pages = [page]
+        control = MagicMock()
+        control.get_attribute.return_value = "/get?payload=test"
+        control.evaluate.return_value = "https://tt.sf-converter.com/"
+        control.click.side_effect = lambda **_kwargs: setattr(context, "pages", [page, popup])
+        find_download.side_effect = [None, control]
+        download = MagicMock()
+        download.suggested_filename = "video.mp4"
+        follow_handoff.side_effect = lambda _page, started, *_args: started.append(download)
+
+        with TemporaryDirectory() as directory:
+            runner.process_job(
+                context, page, api,
+                {"jobId": "job-1", "sourceUrl": "https://vt.tiktok.com/example/"},
+                runner.DEFAULT_SAVEFROM_URL, Path(directory),
+            )
+
+        popup.on.assert_any_call("download", page.on.call_args_list[0].args[1])
+        download.save_as.assert_called_once()
+        fetch.assert_not_called()
+
+    def test_direct_fallback_accepts_mp4_with_generic_content_type(self) -> None:
+        context = MagicMock()
+        response = context.request.get.return_value
+        response.ok = True
+        response.url = "https://media.example/video.mp4"
+        response.headers = {"content-type": "application/download"}
+        response.body.return_value = b"\x00\x00\x00\x18ftypisomvideo"
+
+        with TemporaryDirectory() as directory:
+            target = runner.fetch_generated_download(
+                context, "https://tt.sf-converter.com/get?payload=test",
+                runner.DEFAULT_SAVEFROM_URL, Path(directory), "fallback.mp4",
+            )
+            self.assertEqual(target.read_bytes(), response.body.return_value)
+
+        context.request.get.assert_called_once_with(
+            "https://tt.sf-converter.com/get?payload=test",
+            headers={"Referer": runner.DEFAULT_SAVEFROM_URL},
+            timeout=600_000,
+            fail_on_status_code=False,
+        )
+
     def test_slow_download_refreshes_lease_until_save_finishes(self) -> None:
         refreshed = Event()
         api, download = MagicMock(), MagicMock()
@@ -48,6 +202,7 @@ class RunnerCliTest(unittest.TestCase):
                 args = parse_args()
                 self.assertTrue(args.retry or args.command == "retry")
 
+    @patch("runner.download_original_url", return_value=None)
     @patch("runner.time.monotonic", side_effect=range(0, 600, 3))
     @patch("runner.visible_processing_error", return_value="Link not found")
     @patch("runner.wait_for_captcha", return_value=False)
@@ -55,13 +210,13 @@ class RunnerCliTest(unittest.TestCase):
     @patch("runner.first_visible")
     @patch("runner.find_download_control", return_value=None)
     def test_link_not_found_resubmits_once_before_failing(
-        self, _download, first_visible, find_submit, _captcha, _error, _clock
+        self, _download, first_visible, find_submit, _captcha, _error, _clock, original_download
     ) -> None:
         page, api = MagicMock(), MagicMock()
         page.url = runner.DEFAULT_SAVEFROM_URL
         source_url = "https://vt.tiktok.com/example/"
         with TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(RuntimeError, "after one retry: Link not found"):
+            with self.assertRaisesRegex(RuntimeError, "SaveFrom and original URL both failed: Link not found"):
                 runner.process_job(
                     MagicMock(), page, api,
                     {"jobId": "job-1", "sourceUrl": source_url},
@@ -73,6 +228,23 @@ class RunnerCliTest(unittest.TestCase):
             [call(""), call(source_url), call(""), call(source_url)],
         )
         self.assertEqual(api.update.call_args.args[1], "FAILED")
+        original_download.assert_called_once()
+
+    @patch("runner.subprocess.run")
+    def test_original_url_fallback_uses_downloaded_file(self, run) -> None:
+        api = MagicMock()
+        with TemporaryDirectory() as directory:
+            downloaded = Path(directory) / "job-1.mp4"
+            downloaded.write_bytes(b"video")
+            run.return_value.returncode = 0
+            run.return_value.stdout = f"{downloaded}\n"
+            result = runner.download_original_url(
+                "https://www.tiktok.com/@example/video/123", Path(directory), "job-1", api,
+            )
+        self.assertEqual(result, downloaded)
+        command = run.call_args.args[0]
+        self.assertEqual(command[:3], [runner.sys.executable, "-m", "yt_dlp"])
+        self.assertEqual(command[-1], "https://www.tiktok.com/@example/video/123")
 
     def test_claim_recovers_with_capped_backoff(self) -> None:
         api, page = MagicMock(), MagicMock()

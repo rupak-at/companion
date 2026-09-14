@@ -100,6 +100,12 @@ This standalone mode does not require the backend, Docker, or `LOCAL_RUNNER_TOKE
 
 Once a processed result appears, the runner clicks its download control first and checks for browser events every 250 ms while waiting. Once a browser download starts, retries stop and the runner waits for that file to finish; additional download events for the same job are cancelled. A direct media request is used only if the browser download does not start after the click retries.
 
+The direct request sends the SaveFrom page as its referrer and accepts MP4 data even when the converter labels it with a generic content type. If it still fails, the runner prints the HTTP status or content type so a generated result is not mistaken for a downloadable file.
+
+After a processed result click, the runner follows up to three Download actions on SaveFrom converter pages, whether they replace the main tab or open a new one. It waits briefly for each page to present the next action or start a browser download. Unrelated advertising tabs are closed; if the handoff fails, the runner returns to the original result and tries its direct URL fallback.
+
+If SaveFrom's generated link returns an error (including HTTP 404) or SaveFrom cannot process the link, the runner also tries the original social-media URL with `yt-dlp`. Install the updated `requirements.txt` in the local runner environment after pulling this change: `.venv/bin/pip install -r requirements.txt`. A completed original-URL download is recorded in the same way as a browser download.
+
 If SaveFrom reports “link not found” or another recognized processing error after submitting a URL, the runner submits the same URL once more. If that attempt also fails, it reports the failure instead of retrying indefinitely.
 
 The filename suggested by the media response/browser is preserved after unsafe filesystem characters are removed. Existing files are never overwritten; a collision is saved with `_2`, `_3`, and so on.

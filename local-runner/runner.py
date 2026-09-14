@@ -20,6 +20,7 @@ from playwright.sync_api import BrowserContext, Download, Page, TimeoutError as 
 from runner_support import (
     available_download_path,
     is_savefrom_page,
+    is_savefrom_converter,
     is_processing_error,
     link_key,
     read_completed_links,
@@ -200,6 +201,10 @@ def captcha_visible(page: Page) -> bool:
     return first_visible(page, CAPTCHA_SELECTORS) is not None
 
 
+def savefrom_processing_visible(page: Page) -> bool:
+    return first_visible(page, ("text=/Processing the link to download/i",)) is not None
+
+
 def find_submit_control(page: Page, url_input):
     for label in ("Download", "Search"):
         try:
@@ -322,18 +327,69 @@ def find_download_control(page: Page):
     return max(candidates, key=lambda candidate: candidate[0])[1] if candidates else None
 
 
-def fetch_generated_download(context: BrowserContext, control, download_dir: Path, fallback_name: str) -> Path | None:
+def find_converter_download_control(page: Page):
+    for selector in (
+        'a[download]:visible',
+        'a[href*=".mp4"]:visible',
+        'a:has-text("Download"):visible',
+        'button:has-text("Download"):visible',
+        'input[type="submit"][value*="Download" i]:visible',
+    ):
+        control = first_visible(page, (selector,))
+        if control is None:
+            continue
+        label = (control.inner_text() or "").lower()
+        if "install" in label or "helper" in label or "download app" in label:
+            continue
+        return control
+    return None
+
+
+def follow_converter_handoff(page: Page, started_downloads: list[Download], deadline: float, api: Any,
+                             job_id: str, allow_user_interaction: bool, result_url: str) -> bool:
+    overall_deadline = min(deadline, time.monotonic() + 30)
+    wait_until = min(overall_deadline, time.monotonic() + 6)
+    clicked: set[tuple[str, str, str]] = set()
+    while time.monotonic() < wait_until and not started_downloads:
+        wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
+        if not is_savefrom_converter(page.url) and not (is_savefrom_page(page.url) and page.url != result_url):
+            break
+        control = find_converter_download_control(page)
+        if control is not None:
+            identity = (page.url, control.get_attribute("href") or "", (control.inner_text() or "").strip())
+            if identity not in clicked and len(clicked) < 3:
+                clicked.add(identity)
+                print(f"Clicking Download on converter page ({len(clicked)}/3).", flush=True)
+                control.click(timeout=5_000, no_wait_after=True)
+                wait_until = min(overall_deadline, time.monotonic() + 12)
+        page.wait_for_timeout(250)
+    return bool(started_downloads)
+
+
+def download_control_url(control) -> str | None:
     href = control.get_attribute("href") or ""
     if not href or href.startswith(("blob:", "javascript:")):
         return None
-    media_url = urljoin(control.evaluate("element => element.baseURI"), href)
+    return urljoin(control.evaluate("element => element.baseURI"), href)
+
+
+def fetch_generated_download(context: BrowserContext, media_url: str, referer: str, download_dir: Path, fallback_name: str) -> Path | None:
     try:
-        response = context.request.get(media_url, timeout=600_000, fail_on_status_code=False)
-    except Exception:
+        response = context.request.get(
+            media_url, headers={"Referer": referer}, timeout=600_000, fail_on_status_code=False,
+        )
+    except Exception as error:
+        print(f"Direct media request failed: {type(error).__name__}", file=sys.stderr, flush=True)
         return None
     try:
         content_type = response.headers.get("content-type", "")
-        if not response.ok or not (content_type.startswith("video/") or "octet-stream" in content_type):
+        if not response.ok:
+            print(f"Direct media request returned HTTP {response.status}.", flush=True)
+            return None
+        body = response.body()
+        is_mp4 = len(body) >= 12 and body[4:8] == b"ftyp"
+        if not is_mp4 and not (content_type.startswith("video/") or "octet-stream" in content_type):
+            print(f"Direct media response was not a video (content-type {content_type or 'missing'}).", flush=True)
             return None
         disposition = response.headers.get("content-disposition", "")
         encoded_name = re.search(r"filename\*=UTF-8''([^;]+)", disposition, re.IGNORECASE)
@@ -341,7 +397,7 @@ def fetch_generated_download(context: BrowserContext, control, download_dir: Pat
         url_name = Path(urlparse(response.url).path).name
         name = unquote(encoded_name.group(1)) if encoded_name else plain_name.group(1) if plain_name else url_name
         target = available_download_path(download_dir, name, fallback_name)
-        target.write_bytes(response.body())
+        target.write_bytes(body)
         return target
     finally:
         response.dispose()
@@ -358,6 +414,21 @@ def close_ad_popup(popup: Page) -> None:
         except Exception:
             if not popup.is_closed():
                 popup.close()
+
+
+def find_converter_popup(context: BrowserContext, main_page: Page, capture_download,
+                         registered: list[Page]) -> Page | None:
+    for popup in context.pages:
+        if popup is main_page or popup.is_closed():
+            continue
+        if is_savefrom_converter(popup.url) or is_savefrom_page(popup.url):
+            if popup not in registered:
+                popup.on("download", capture_download)
+                registered.append(popup)
+            return popup
+        if popup.url != "about:blank":
+            close_ad_popup(popup)
+    return None
 
 
 def save_download_with_heartbeat(download: Download, target: Path, api: Any, job_id: str, interval: float = 300) -> None:
@@ -379,6 +450,47 @@ def save_download_with_heartbeat(download: Download, target: Path, api: Any, job
         heartbeat.join()
 
 
+def download_original_url(source_url: str, download_dir: Path, job_id: str, api: Any) -> Path | None:
+    target = available_download_path(download_dir, f"{job_id}.mp4")
+    output_template = str(target.with_suffix(".%(ext)s"))
+    stopped = Event()
+
+    def refresh_lease() -> None:
+        while not stopped.wait(300):
+            try:
+                api.update(job_id, "DOWNLOADING", "Direct video download is still in progress.")
+            except Exception as error:
+                print(f"Could not refresh download lease: {error}", file=sys.stderr, flush=True)
+
+    heartbeat = Thread(target=refresh_lease, daemon=True)
+    heartbeat.start()
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "yt_dlp", "--no-playlist", "--no-overwrites",
+             "--format", "best[ext=mp4]/best", "--retries", "3", "--fragment-retries", "3",
+             "--socket-timeout", "30", "--quiet", "--no-warnings", "--print", "after_move:filepath",
+             "--output", output_template, source_url],
+            capture_output=True, text=True, timeout=900, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        print(f"Direct video download failed: {type(error).__name__}.", file=sys.stderr, flush=True)
+        return None
+    finally:
+        stopped.set()
+        heartbeat.join()
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip().splitlines()
+        print(f"Direct video download failed: {detail[-1] if detail else f'exit {result.returncode}'}", file=sys.stderr, flush=True)
+        return None
+    paths = (result.stdout or "").strip().splitlines()
+    if not paths:
+        return None
+    downloaded = Path(paths[-1]).resolve()
+    if downloaded.parent != download_dir.resolve() or not downloaded.is_file() or downloaded.stat().st_size == 0:
+        return None
+    return downloaded
+
+
 def process_job(
     context: BrowserContext,
     page: Page,
@@ -393,6 +505,7 @@ def process_job(
     saved_files: list[Path] = []
 
     started_downloads: list[Download] = []
+    registered_popups: list[Page] = []
 
     def capture_download(download: Download) -> None:
         # Record the start immediately; save_as waits for completion and belongs
@@ -404,8 +517,12 @@ def process_job(
         started_downloads.append(download)
         print("Browser download started; waiting for the file to finish.", flush=True)
 
+    def capture_new_page(popup: Page) -> None:
+        popup.on("download", capture_download)
+        registered_popups.append(popup)
+
     page.on("download", capture_download)
-    page.on("popup", close_ad_popup)
+    context.on("page", capture_new_page)
     try:
         deadline = time.monotonic() + 10 * 60
         if page.url == "about:blank" or not is_savefrom_page(page.url):
@@ -449,6 +566,7 @@ def process_job(
             retry_reason = None
 
             while time.monotonic() < deadline and not saved_files and not started_downloads:
+                find_converter_popup(context, page, capture_download, registered_popups)
                 wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
                 if page.url != "about:blank" and not is_savefrom_page(page.url):
                     redirected_to = page.url
@@ -461,6 +579,13 @@ def process_job(
                     retry_reason = processing_error
                     print(f"SaveFrom processing error: {processing_error}")
                     break
+
+                if savefrom_processing_visible(page):
+                    if time.monotonic() - last_wait_log >= 15:
+                        print("SaveFrom is still processing this link; waiting for the result to finish.", flush=True)
+                        last_wait_log = time.monotonic()
+                    page.wait_for_timeout(250)
+                    continue
 
                 download_control = find_download_control(page)
                 if (
@@ -475,6 +600,7 @@ def process_job(
                     print("Processed result detected; using its download control.")
                     api.update(job_id, "DOWNLOADING", "Processed result found; starting the download.")
                     result_url = page.url
+                    fallback_url = download_control_url(download_control)
                     for click_attempt in range(1, 3):
                         if started_downloads:
                             break
@@ -482,11 +608,32 @@ def process_job(
                         download_control.click(timeout=5_000, no_wait_after=True)
                         click_deadline = min(deadline, time.monotonic() + 20)
                         while time.monotonic() < click_deadline and not saved_files and not started_downloads:
+                            converter_popup = find_converter_popup(context, page, capture_download, registered_popups)
+                            if converter_popup is not None:
+                                print("SaveFrom converter opened in a new tab; following its download steps.", flush=True)
+                                follow_converter_handoff(
+                                    converter_popup, started_downloads, deadline, api, job_id,
+                                    allow_user_interaction, result_url,
+                                )
+                                if started_downloads:
+                                    break
+                                converter_popup.close()
                             wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
                             if page.url not in ("about:blank", result_url):
+                                if is_savefrom_converter(page.url) or (is_savefrom_page(page.url) and page.url != result_url):
+                                    print("SaveFrom converter opened; following its download steps.", flush=True)
+                                    follow_converter_handoff(
+                                        page, started_downloads, deadline, api, job_id,
+                                        allow_user_interaction, result_url,
+                                    )
+                                    if started_downloads:
+                                        break
                                 redirected_to = page.url
-                                print(f"Returning from download redirect: {redirected_to}")
-                                page.go_back(wait_until="domcontentloaded", timeout=30_000)
+                                print(f"Returning from download redirect: {urlparse(redirected_to).hostname}")
+                                for _ in range(3):
+                                    if page.url in ("about:blank", result_url):
+                                        break
+                                    page.go_back(wait_until="domcontentloaded", timeout=30_000)
                                 break
                             page.wait_for_timeout(250)
                         if saved_files or started_downloads:
@@ -499,18 +646,20 @@ def process_job(
                         while time.monotonic() < reacquire_deadline and download_control is None and not started_downloads:
                             wait_for_captcha(page, api, job_id, deadline, allow_user_interaction)
                             download_control = find_download_control(page)
+                            if download_control is not None:
+                                fallback_url = download_control_url(download_control) or fallback_url
                             if download_control is None:
                                 page.wait_for_timeout(250)
                         if download_control is None:
                             break
-                    if not saved_files and not started_downloads and download_control is not None:
+                    if not saved_files and not started_downloads and fallback_url:
                         print("Browser download did not start; trying the generated media URL.")
-                        direct_file = fetch_generated_download(context, download_control, download_dir, f"{job_id}.mp4")
+                        direct_file = fetch_generated_download(context, fallback_url, result_url, download_dir, f"{job_id}.mp4")
                         if direct_file is not None:
                             saved_files.append(direct_file)
                             print(f"Downloaded generated media directly: {direct_file}")
                     if not saved_files and not started_downloads:
-                        raise RuntimeError("Processed result was found, but no download started after redirect handling")
+                        retry_reason = "SaveFrom's generated download did not start"
                     break
 
                 if time.monotonic() - last_wait_log >= 15:
@@ -524,7 +673,7 @@ def process_job(
                 print("Retrying the link in the same input without reloading SaveFrom.")
                 continue
             if retry_reason:
-                raise RuntimeError(f"SaveFrom could not process the link after one retry: {retry_reason}")
+                break
             break
 
         if started_downloads:
@@ -535,7 +684,14 @@ def process_job(
             print(f"Downloaded: {target}")
 
         if not saved_files:
-            raise RuntimeError("No browser download was captured within ten minutes")
+            print("SaveFrom did not provide a working download; trying the original video URL.", flush=True)
+            api.update(job_id, "DOWNLOADING", "SaveFrom failed; trying the original video URL.")
+            direct_file = download_original_url(source_url, download_dir, job_id, api)
+            if direct_file is not None:
+                saved_files.append(direct_file)
+                print(f"Downloaded from original URL: {direct_file}", flush=True)
+        if not saved_files:
+            raise RuntimeError(f"SaveFrom and original URL both failed: {retry_reason or 'no download started'}")
         api.update(job_id, "COMPLETED", f"Saved locally as {saved_files[-1].name}")
     except HumanVerificationRequired:
         raise
@@ -544,7 +700,11 @@ def process_job(
         raise
     finally:
         page.remove_listener("download", capture_download)
-        page.remove_listener("popup", close_ad_popup)
+        context.remove_listener("page", capture_new_page)
+        for popup in registered_popups:
+            if not popup.is_closed():
+                popup.remove_listener("download", capture_download)
+                popup.close()
 
 
 def parse_args() -> argparse.Namespace:

@@ -31,6 +31,11 @@ def is_savefrom_page(url: str) -> bool:
     return host == "savefrom.net" or host.endswith(".savefrom.net")
 
 
+def is_savefrom_converter(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower().rstrip(".")
+    return host == "sf-converter.com" or host.endswith(".sf-converter.com")
+
+
 def is_savefrom_interstitial(url: str) -> bool:
     parsed = urlparse(url)
     return is_savefrom_page(url) and parsed.path.lower().rstrip("/").endswith("/user.php")

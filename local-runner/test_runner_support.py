@@ -7,6 +7,7 @@ from runner_support import (
     is_processing_error,
     is_savefrom_interstitial,
     is_savefrom_page,
+    is_savefrom_converter,
     link_key,
     read_completed_links,
     read_env_value,
@@ -43,6 +44,8 @@ class RunnerSupportTest(unittest.TestCase):
     def test_savefrom_host_check_rejects_lookalikes(self) -> None:
         self.assertTrue(is_savefrom_page("https://en1.savefrom.net/16Em/download-from-tiktok"))
         self.assertFalse(is_savefrom_page("https://savefrom.net.attacker.example/"))
+        self.assertTrue(is_savefrom_converter("https://tt.sf-converter.com/get"))
+        self.assertFalse(is_savefrom_converter("https://sf-converter.com.attacker.example/get"))
 
     def test_detects_savefrom_user_interstitial(self) -> None:
         self.assertTrue(is_savefrom_interstitial("https://en1.savefrom.net/1OD/user.php"))
