@@ -9,7 +9,6 @@ import subprocess
 import sys
 import time
 from threading import Event, Thread
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -90,17 +89,22 @@ def environment_flag(name: str, default: bool) -> bool:
 
 
 class RunnerApi:
-    def __init__(self, base_url: str, token: str, runner_id: str, retry_failed_before: str | None = None) -> None:
+    def __init__(self, base_url: str, token: str, runner_id: str) -> None:
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.runner_id = runner_id
-        self.retry_failed_before = retry_failed_before
 
     def claim(self) -> dict[str, Any] | None:
-        payload = {"runnerId": self.runner_id}
-        if self.retry_failed_before:
-            payload["retryFailedBefore"] = self.retry_failed_before
-        return self._request("POST", "/api/v1/runner/jobs/claim", payload, allow_empty=True)
+        return self._request("POST", "/api/v1/runner/jobs/claim", {"runnerId": self.runner_id}, allow_empty=True)
+
+    def requeue_failed(self) -> int:
+        try:
+            result = self._request("POST", "/api/v1/runner/jobs/requeue-failed", {"runnerId": self.runner_id})
+        except RuntimeError as error:
+            if "HTTP 404" in str(error):
+                raise RuntimeError("The API does not support retry yet. Update and rebuild the server API on the VPS.") from error
+            raise
+        return int(result["requeued"]) if result else 0
 
     def update(self, job_id: str, status: str, message: str, error_code: str | None = None) -> None:
         payload = {"runnerId": self.runner_id, "status": status, "message": message}
@@ -570,7 +574,7 @@ def parse_args() -> argparse.Namespace:
         help="Start Chromium minimized (enabled by default; use --no-start-minimized to show it)",
     )
     parser.add_argument("--once", action="store_true", help="Exit when no queued job is available")
-    parser.add_argument("--retry", action="store_true", help="Retry database jobs that failed before this run started")
+    parser.add_argument("--retry", action="store_true", help="Requeue failed database jobs once, then process them")
     return parser.parse_args()
 
 
@@ -629,8 +633,14 @@ def main() -> int:
         if not token or len(token) < 32:
             print("LOCAL_RUNNER_TOKEN is missing or shorter than 32 characters. Add the same token to server/.env.", file=sys.stderr)
             return 2
-        retry_failed_before = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z") if args.retry else None
-        api = RunnerApi(args.api_url, token, args.runner_id, retry_failed_before)
+        api = RunnerApi(args.api_url, token, args.runner_id)
+        if args.retry:
+            try:
+                count = api.requeue_failed()
+            except RuntimeError as error:
+                print(f"Cannot retry failed jobs: {error}", file=sys.stderr)
+                return 1
+            print(f"Requeued {count} failed social-link job(s).", flush=True)
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=args.profile_dir,

@@ -24,15 +24,23 @@ class RunnerCliTest(unittest.TestCase):
         download.save_as.assert_called_once_with(Path("/tmp/video.mp4"))
 
     @patch("runner.urlopen")
-    def test_retry_claim_includes_cutoff(self, urlopen) -> None:
-        api = runner.RunnerApi("http://localhost", "test-token", "runner", "2026-09-13T12:00:00.000Z")
-        urlopen.return_value.__enter__.return_value.read.return_value = b""
-        api.claim()
+    def test_retry_requeues_failed_jobs_once(self, urlopen) -> None:
+        api = runner.RunnerApi("http://localhost", "test-token", "runner")
+        urlopen.return_value.__enter__.return_value.read.return_value = b'{"requeued": 7}'
+        self.assertEqual(api.requeue_failed(), 7)
         request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "http://localhost/api/v1/runner/jobs/requeue-failed")
         self.assertEqual(
             json.loads(request.data),
-            {"runnerId": "runner", "retryFailedBefore": "2026-09-13T12:00:00.000Z"},
+            {"runnerId": "runner"},
         )
+
+    @patch("runner.urlopen")
+    def test_old_server_gives_clear_retry_error(self, urlopen) -> None:
+        api = runner.RunnerApi("http://localhost", "test-token", "runner")
+        urlopen.side_effect = HTTPError("http://localhost", 404, "missing", {}, BytesIO(b'{"error":"NOT_FOUND"}'))
+        with self.assertRaisesRegex(RuntimeError, "Update and rebuild the server API"):
+            api.requeue_failed()
 
     def test_retry_command_and_flag(self) -> None:
         for arguments in (("retry",), ("--retry",)):

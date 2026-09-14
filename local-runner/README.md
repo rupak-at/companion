@@ -73,7 +73,7 @@ export RUNNER_DOWNLOAD_DIR="/path/to/my/videos"
 .venv/bin/python runner.py
 ```
 
-To retry database jobs that failed previously, run `.venv/bin/python runner.py retry --once` (or use `--retry --once`). This also processes queued jobs. Each previously failed job gets one new attempt during this run; a job that fails again waits for another retry invocation. Retry mode does not apply to `--links-file`.
+To retry database jobs that failed previously, run `.venv/bin/python runner.py retry --once` (or use `--retry --once`). The API requeues failed TikTok, Instagram, and Facebook jobs once before the runner starts claiming jobs. It prints the number requeued and also processes other queued jobs. A job that fails again waits for another retry invocation. Retry mode does not apply to `--links-file`. Rebuild the server API after updating it; an older API returns a clear unsupported-retry error.
 
 To keep this setting across terminal sessions, create the ignored `local-runner/.env` file from `.env.example` and set `RUNNER_DOWNLOAD_DIR` there. Existing shell environment values take priority. An explicit `--download-dir /another/path` takes priority over both. All options support `~` and relative paths. The persistent browser profile stays under `local-runner/.local/` and is ignored by Git.
 

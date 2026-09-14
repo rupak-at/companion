@@ -15,7 +15,6 @@ import { notifyCaptchaRequired } from "./push.js";
 const app = Fastify({ logger: true, bodyLimit: 16_384 });
 const createBody = z.object({ url: z.string().url().max(2048), format: z.enum(["video", "image"]).optional() });
 const runnerIdentity = z.object({ runnerId: z.string().trim().min(3).max(80).regex(/^[a-zA-Z0-9._-]+$/) });
-const runnerClaim = runnerIdentity.extend({ retryFailedBefore: z.string().datetime().optional() });
 const runnerUpdate = z.object({
   runnerId: runnerIdentity.shape.runnerId,
   status: z.enum(["WAITING_FOR_USER", "DOWNLOADING", "COMPLETED", "FAILED"]),
@@ -87,11 +86,28 @@ app.get<{ Params: { jobId: string } }>("/api/v1/downloads/:jobId", async (reques
   };
 });
 
+app.post("/api/v1/runner/jobs/requeue-failed", async (request, reply) => {
+  if (!isRunnerAuthorized(request.headers.authorization, config.LOCAL_RUNNER_TOKEN)) {
+    return reply.code(config.LOCAL_RUNNER_TOKEN ? 401 : 503).send({ error: config.LOCAL_RUNNER_TOKEN ? "UNAUTHORIZED" : "RUNNER_NOT_CONFIGURED" });
+  }
+  const parsed = runnerIdentity.safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ error: "INVALID_RUNNER" });
+  const result = await prisma.downloadJob.updateMany({
+    where: { status: "FAILED", provider: { in: ["TIKTOK", "INSTAGRAM", "FACEBOOK"] } },
+    data: {
+      status: "WAITING_FOR_LOCAL_RUNNER", progress: 0, runnerId: null,
+      runnerMessage: "Queued for retry by local browser runner", leaseExpiresAt: null,
+      errorCode: null, errorMessage: null,
+    },
+  });
+  return { requeued: result.count };
+});
+
 app.post("/api/v1/runner/jobs/claim", async (request, reply) => {
   if (!isRunnerAuthorized(request.headers.authorization, config.LOCAL_RUNNER_TOKEN)) {
     return reply.code(config.LOCAL_RUNNER_TOKEN ? 401 : 503).send({ error: config.LOCAL_RUNNER_TOKEN ? "UNAUTHORIZED" : "RUNNER_NOT_CONFIGURED" });
   }
-  const parsed = runnerClaim.safeParse(request.body);
+  const parsed = runnerIdentity.safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ error: "INVALID_RUNNER" });
   const now = new Date();
   const resumableStatuses = ["CLAIMED", "WAITING_FOR_USER", "DOWNLOADING"] as const;
@@ -99,11 +115,6 @@ app.post("/api/v1/runner/jobs/claim", async (request, reply) => {
     { status: "WAITING_FOR_LOCAL_RUNNER" },
     { runnerId: parsed.data.runnerId, status: { in: [...resumableStatuses] } },
     { status: { in: [...resumableStatuses] }, leaseExpiresAt: { lt: now } },
-    ...(parsed.data.retryFailedBefore ? [{
-      status: "FAILED" as const,
-      runnerId: { not: null },
-      updatedAt: { lt: new Date(parsed.data.retryFailedBefore) },
-    }] : []),
   ] };
   const candidate = await prisma.downloadJob.findFirst({ where: claimable, orderBy: { createdAt: "asc" } });
   if (!candidate) return reply.code(204).send();
