@@ -141,7 +141,8 @@ app.post<{ Params: { jobId: string } }>("/api/v1/runner/jobs/:jobId/status", asy
   } });
   if (parsed.data.status === "WAITING_FOR_USER" && existing.status !== "WAITING_FOR_USER") {
     try {
-      await notifyCaptchaRequired(job.userId, job.id, parsed.data.message ?? "Complete verification in your local browser.");
+      const push = await notifyCaptchaRequired(job.userId, job.id, parsed.data.message ?? "Complete verification in your local browser.");
+      if (push.sent === 0) request.log.warn({ jobId: job.id, reason: push.reason }, "CAPTCHA push was not delivered");
     } catch (error) {
       request.log.error({ err: error, jobId: job.id }, "Could not send CAPTCHA push notification");
     }
