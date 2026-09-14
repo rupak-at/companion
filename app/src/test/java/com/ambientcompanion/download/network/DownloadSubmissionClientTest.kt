@@ -1,6 +1,8 @@
 package com.ambientcompanion.download.network
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DownloadSubmissionClientTest {
@@ -34,5 +36,15 @@ class DownloadSubmissionClientTest {
     @Test
     fun `falls back to HTTP status for a non-JSON response`() {
         assertEquals("Request failed (HTTP 502).", parseApiError("Bad gateway", 502))
+    }
+
+    @Test
+    fun `starts a new anonymous session only when the saved refresh session cannot recover`() {
+        assertTrue(isUnrecoverableRefreshError("""{"error_code":"refresh_token_not_found","msg":"Refresh token expired"}"""))
+        assertTrue(isUnrecoverableRefreshError("""{"error_code":"refresh_token_already_used"}"""))
+        assertTrue(isUnrecoverableRefreshError("""{"error_code":"session_expired"}"""))
+        assertFalse(isUnrecoverableRefreshError("""{"error_code":"request_timeout"}"""))
+        assertFalse(isUnrecoverableRefreshError("""{"error_code":"over_request_rate_limit"}"""))
+        assertFalse(isUnrecoverableRefreshError("Bad gateway"))
     }
 }

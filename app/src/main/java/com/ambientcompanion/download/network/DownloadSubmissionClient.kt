@@ -18,19 +18,17 @@ class DownloadSubmissionClient(context: Context) {
 
     suspend fun saveForLater(sourceUrl: String): DownloadSubmissionResult = withContext(Dispatchers.IO) {
         requireConfiguration()
-        var accessToken = accessToken()
+        val accessToken = accessToken()
         var response = request(
             url = "${BuildConfig.DOWNLOAD_API_BASE_URL.trimEnd('/')}/api/v1/downloads",
             body = buildJsonObject { put("url", sourceUrl); put("format", "video") }.toString(),
             bearerToken = accessToken,
         )
         if (response.code == HttpURLConnection.HTTP_UNAUTHORIZED) {
-            clearSession()
-            accessToken = accessToken()
             response = request(
                 url = "${BuildConfig.DOWNLOAD_API_BASE_URL.trimEnd('/')}/api/v1/downloads",
                 body = buildJsonObject { put("url", sourceUrl); put("format", "video") }.toString(),
-                bearerToken = accessToken,
+                bearerToken = accessTokenAfterUnauthorized(accessToken),
             )
         }
         if (response.code !in 200..299) throw SubmissionException(response.message(response.code))
@@ -39,17 +37,17 @@ class DownloadSubmissionClient(context: Context) {
 
     suspend fun registerDevice(token: String) = withContext(Dispatchers.IO) {
         requireConfiguration()
+        val accessToken = accessToken()
         var response = request(
             url = "${BuildConfig.DOWNLOAD_API_BASE_URL.trimEnd('/')}/api/v1/devices",
             body = buildJsonObject { put("token", token); put("platform", "android") }.toString(),
-            bearerToken = accessToken(),
+            bearerToken = accessToken,
         )
         if (response.code == HttpURLConnection.HTTP_UNAUTHORIZED) {
-            clearSession()
             response = request(
                 url = "${BuildConfig.DOWNLOAD_API_BASE_URL.trimEnd('/')}/api/v1/devices",
                 body = buildJsonObject { put("token", token); put("platform", "android") }.toString(),
-                bearerToken = accessToken(),
+                bearerToken = accessTokenAfterUnauthorized(accessToken),
             )
         }
         if (response.code !in 200..299) throw SubmissionException(response.message(response.code))
@@ -61,25 +59,36 @@ class DownloadSubmissionClient(context: Context) {
         }
     }
 
-    private fun accessToken(): String {
+    private fun accessToken(): String = synchronized(sessionLock) { accessTokenLocked() }
+
+    private fun accessTokenAfterUnauthorized(rejectedToken: String): String = synchronized(sessionLock) {
+        if (preferences.getString("access_token", null) == rejectedToken) {
+            preferences.edit().remove("access_token").remove("expires_at").apply()
+        }
+        accessTokenLocked()
+    }
+
+    private fun accessTokenLocked(): String {
         val cached = preferences.getString("access_token", null)
         val expiresAt = preferences.getLong("expires_at", 0L)
         if (cached != null && expiresAt > System.currentTimeMillis() + 60_000) return cached
 
         val refreshToken = preferences.getString("refresh_token", null)
-        val response = if (refreshToken != null) {
-            request(
+        if (refreshToken != null) {
+            val response = request(
                 url = "${BuildConfig.SUPABASE_URL.trimEnd('/')}/auth/v1/token?grant_type=refresh_token",
                 body = buildJsonObject { put("refresh_token", refreshToken) }.toString(),
                 apiKey = BuildConfig.SUPABASE_ANON_KEY,
             )
-        } else {
-            request(
-                url = "${BuildConfig.SUPABASE_URL.trimEnd('/')}/auth/v1/signup",
-                body = "{}",
-                apiKey = BuildConfig.SUPABASE_ANON_KEY,
-            )
+            if (response.code in 200..299) return storeSession(response.body)
+            if (!isUnrecoverableRefreshError(response.body)) throw SubmissionException(response.message(response.code))
+            clearSession()
         }
+        val response = request(
+            url = "${BuildConfig.SUPABASE_URL.trimEnd('/')}/auth/v1/signup",
+            body = "{}",
+            apiKey = BuildConfig.SUPABASE_ANON_KEY,
+        )
         if (response.code !in 200..299) throw SubmissionException(response.message(response.code))
         return storeSession(response.body)
     }
@@ -128,6 +137,10 @@ class DownloadSubmissionClient(context: Context) {
     private data class HttpResult(val code: Int, val body: String) {
         fun message(fallbackCode: Int): String = parseApiError(body, fallbackCode)
     }
+
+    companion object {
+        private val sessionLock = Any()
+    }
 }
 
 data class DownloadSubmissionResult(val jobId: String, val alreadySaved: Boolean)
@@ -155,4 +168,11 @@ internal fun parseApiError(body: String, statusCode: Int): String {
         errorCode != null -> errorCode
         else -> "Request failed (HTTP $statusCode)."
     }
+}
+
+internal fun isUnrecoverableRefreshError(body: String): Boolean {
+    val code = runCatching {
+        Json.parseToJsonElement(body).jsonObject["error_code"]?.jsonPrimitive?.content
+    }.getOrNull()
+    return code in setOf("refresh_token_not_found", "refresh_token_already_used", "session_expired", "session_not_found")
 }
