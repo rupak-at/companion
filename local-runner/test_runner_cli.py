@@ -2,6 +2,7 @@ from io import BytesIO
 import json
 from urllib.error import HTTPError, URLError
 from pathlib import Path
+from threading import Event
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, call, patch
 import unittest
@@ -11,6 +12,17 @@ from runner import parse_args
 
 
 class RunnerCliTest(unittest.TestCase):
+    def test_slow_download_refreshes_lease_until_save_finishes(self) -> None:
+        refreshed = Event()
+        api, download = MagicMock(), MagicMock()
+        api.update.side_effect = lambda *_args: refreshed.set()
+        download.save_as.side_effect = lambda _target: self.assertTrue(refreshed.wait(1))
+
+        runner.save_download_with_heartbeat(download, Path("/tmp/video.mp4"), api, "job-1", interval=0.01)
+
+        api.update.assert_called_with("job-1", "DOWNLOADING", "Browser download is still in progress.")
+        download.save_as.assert_called_once_with(Path("/tmp/video.mp4"))
+
     @patch("runner.urlopen")
     def test_retry_claim_includes_cutoff(self, urlopen) -> None:
         api = runner.RunnerApi("http://localhost", "test-token", "runner", "2026-09-13T12:00:00.000Z")

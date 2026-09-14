@@ -8,6 +8,7 @@ import socket
 import subprocess
 import sys
 import time
+from threading import Event, Thread
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -323,7 +324,7 @@ def fetch_generated_download(context: BrowserContext, control, download_dir: Pat
         return None
     media_url = urljoin(control.evaluate("element => element.baseURI"), href)
     try:
-        response = context.request.get(media_url, timeout=120_000, fail_on_status_code=False)
+        response = context.request.get(media_url, timeout=600_000, fail_on_status_code=False)
     except Exception:
         return None
     try:
@@ -353,6 +354,25 @@ def close_ad_popup(popup: Page) -> None:
         except Exception:
             if not popup.is_closed():
                 popup.close()
+
+
+def save_download_with_heartbeat(download: Download, target: Path, api: Any, job_id: str, interval: float = 300) -> None:
+    stopped = Event()
+
+    def refresh_lease() -> None:
+        while not stopped.wait(interval):
+            try:
+                api.update(job_id, "DOWNLOADING", "Browser download is still in progress.")
+            except Exception as error:
+                print(f"Could not refresh download lease: {error}", file=sys.stderr, flush=True)
+
+    heartbeat = Thread(target=refresh_lease, daemon=True)
+    heartbeat.start()
+    try:
+        download.save_as(target)
+    finally:
+        stopped.set()
+        heartbeat.join()
 
 
 def process_job(
@@ -506,7 +526,7 @@ def process_job(
         if started_downloads:
             download = started_downloads[0]
             target = available_download_path(download_dir, download.suggested_filename)
-            download.save_as(target)
+            save_download_with_heartbeat(download, target, api, job_id)
             saved_files.append(target)
             print(f"Downloaded: {target}")
 

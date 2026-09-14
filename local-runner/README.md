@@ -33,6 +33,8 @@ A `P1001` error mentioning Supabase means the backend cannot reach its database.
 
 During normal queue operation, temporary claim failures (network errors, timeouts, HTTP 408/429/5xx) retry after 5, 10, 20, 40, then 60 seconds until the backend recovers. The browser stays open. Persistent database failures still require restoring the backend's database connectivity. Authentication and other permanent claim errors exit with a concise message. `--once` exits on a claim failure instead of retrying. This recovery applies to claiming jobs; it does not retry failed status updates.
 
+Once Chromium starts a download, slow transfers can continue beyond the ten-minute SaveFrom processing window. The runner refreshes the database job lease every five minutes until the file finishes. The direct media fallback waits up to ten minutes for a response. If the network causes the download to fail, the job becomes `FAILED`; run `runner.py retry --once` to try it again.
+
 ## Setup
 
 1. Generate the shared runner token without displaying it:
