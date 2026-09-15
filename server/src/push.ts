@@ -14,14 +14,14 @@ function firebaseApp() {
   });
 }
 
-export async function notifyCaptchaRequired(userId: string, jobId: string, message: string): Promise<{ sent: number; reason?: string }> {
+export async function notifyCaptchaRequired(userId: string, jobId: string | undefined, message: string): Promise<{ sent: number; reason?: string }> {
   const app = firebaseApp();
   if (!app) return { sent: 0, reason: "FCM_NOT_CONFIGURED" };
   const devices = await prisma.deviceToken.findMany({ where: { userId } });
   if (devices.length === 0) return { sent: 0, reason: "NO_REGISTERED_DEVICE" };
   const result = await getMessaging(app).sendEachForMulticast({
     tokens: devices.map((device) => device.token),
-    data: { type: "CAPTCHA_REQUIRED", jobId, title: "Verification required", body: message },
+    data: { type: "CAPTCHA_REQUIRED", ...(jobId ? { jobId } : {}), title: "Verification required", body: message },
     notification: { title: "Verification required", body: message },
   });
   const invalidTokens = devices.filter((_, index) => {

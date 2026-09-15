@@ -21,6 +21,11 @@ const runnerUpdate = z.object({
   message: z.string().trim().max(500).optional(),
   errorCode: z.string().trim().max(80).optional(),
 });
+const runnerCaptchaNotification = z.object({
+  runnerId: runnerIdentity.shape.runnerId,
+  userId: z.string().uuid(),
+  message: z.string().trim().min(1).max(500),
+});
 const deviceTokenBody = z.object({ token: z.string().trim().min(20).max(4096), platform: z.literal("android") });
 const leaseDurationMs = 30 * 60_000;
 
@@ -159,6 +164,17 @@ app.post<{ Params: { jobId: string } }>("/api/v1/runner/jobs/:jobId/status", asy
     }
   }
   return { jobId: job.id, status: job.status };
+});
+
+app.post("/api/v1/runner/notifications/captcha", async (request, reply) => {
+  if (!isRunnerAuthorized(request.headers.authorization, config.LOCAL_RUNNER_TOKEN)) {
+    return reply.code(config.LOCAL_RUNNER_TOKEN ? 401 : 503).send({ error: config.LOCAL_RUNNER_TOKEN ? "UNAUTHORIZED" : "RUNNER_NOT_CONFIGURED" });
+  }
+  const parsed = runnerCaptchaNotification.safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ error: "INVALID_RUNNER_NOTIFICATION" });
+  const push = await notifyCaptchaRequired(parsed.data.userId, undefined, parsed.data.message);
+  if (push.sent === 0) request.log.warn({ runnerId: parsed.data.runnerId, reason: push.reason }, "File-link CAPTCHA push was not delivered");
+  return push;
 });
 
 app.get<{ Params: { jobId: string } }>("/api/v1/downloads/:jobId/file", async (request, reply) => {

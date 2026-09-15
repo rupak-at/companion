@@ -190,11 +190,49 @@ class RunnerCliTest(unittest.TestCase):
         )
 
     @patch("runner.urlopen")
+    def test_file_link_captcha_push_uses_separate_endpoint(self, urlopen) -> None:
+        api = runner.RunnerApi("https://example.test/", "test-token", "runner")
+        urlopen.return_value.__enter__.return_value.read.return_value = b'{"sent":1}'
+
+        status = runner.LocalBatchStatus(api, "123e4567-e89b-12d3-a456-426614174000")
+        status.update("batch-1", "DOWNLOADING", "Processing")
+        urlopen.assert_not_called()
+        status.update("batch-1", "WAITING_FOR_USER", "Solve the CAPTCHA locally")
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://example.test/api/v1/runner/notifications/captcha")
+        self.assertEqual(json.loads(request.data), {
+            "runnerId": "runner",
+            "userId": "123e4567-e89b-12d3-a456-426614174000",
+            "message": "Solve the CAPTCHA locally",
+        })
+        self.assertEqual(request.get_header("Authorization"), "Bearer test-token")
+
+    def test_file_link_captcha_push_failure_does_not_stop_local_verification(self) -> None:
+        api = MagicMock()
+        api.notify_captcha.side_effect = runner.RunnerApiUnavailable("network unavailable")
+        status = runner.LocalBatchStatus(api, "123e4567-e89b-12d3-a456-426614174000")
+
+        status.update("batch-1", "WAITING_FOR_USER", "Solve the CAPTCHA locally")
+
+        api.notify_captcha.assert_called_once()
+
+    @patch("runner.urlopen")
     def test_old_server_gives_clear_retry_error(self, urlopen) -> None:
         api = runner.RunnerApi("http://localhost", "test-token", "runner")
         urlopen.side_effect = HTTPError("http://localhost", 404, "missing", {}, BytesIO(b'{"error":"NOT_FOUND"}'))
         with self.assertRaisesRegex(RuntimeError, "Update and rebuild the server API"):
             api.requeue_failed()
+
+    @patch("runner.urlopen")
+    def test_unconfigured_runner_token_is_a_permanent_error(self, urlopen) -> None:
+        api = runner.RunnerApi("http://localhost", "test-token", "runner")
+        urlopen.side_effect = HTTPError(
+            "http://localhost", 503, "unavailable", {}, BytesIO(b'{"error":"RUNNER_NOT_CONFIGURED"}'),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "VPS API has no LOCAL_RUNNER_TOKEN"):
+            api.claim()
 
     def test_retry_command_and_flag(self) -> None:
         for arguments in (("retry",), ("--retry",)):

@@ -14,6 +14,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urljoin, urlparse
 from urllib.request import Request, urlopen
+from uuid import UUID
 
 from playwright.sync_api import BrowserContext, Download, Page, TimeoutError as PlaywrightTimeout, sync_playwright
 
@@ -113,6 +114,11 @@ class RunnerApi:
             payload["errorCode"] = error_code
         self._request("POST", f"/api/v1/runner/jobs/{job_id}/status", payload)
 
+    def notify_captcha(self, user_id: str, message: str) -> dict[str, Any] | None:
+        return self._request("POST", "/api/v1/runner/notifications/captcha", {
+            "runnerId": self.runner_id, "userId": user_id, "message": message,
+        })
+
     def _request(self, method: str, path: str, payload: dict[str, Any], allow_empty: bool = False) -> dict[str, Any] | None:
         request = Request(
             f"{self.base_url}{path}",
@@ -128,6 +134,11 @@ class RunnerApi:
             if allow_empty and error.code == 204:
                 return None
             detail = error.read().decode("utf-8", errors="replace")
+            if error.code == 503 and "RUNNER_NOT_CONFIGURED" in detail:
+                raise RuntimeError(
+                    "The VPS API has no LOCAL_RUNNER_TOKEN. Configure the same token in the VPS server/.env "
+                    "and local server/.env, then recreate the VPS API container."
+                ) from error
             error_type = RunnerApiUnavailable if error.code in {408, 429} or error.code >= 500 else RuntimeError
             raise error_type(f"Runner API returned HTTP {error.code}: {detail}") from error
         except URLError as error:
@@ -151,9 +162,20 @@ def claim_when_available(api: RunnerApi, page: Page, once: bool = False) -> dict
 
 
 class LocalBatchStatus:
+    def __init__(self, push_api: RunnerApi | None = None, push_user_id: str | None = None) -> None:
+        self.push_api = push_api
+        self.push_user_id = push_user_id
+
     def update(self, job_id: str, status: str, message: str, error_code: str | None = None) -> None:
         suffix = f" ({error_code})" if error_code else ""
         print(f"[{job_id}] {status}: {message}{suffix}", flush=True)
+        if status == "WAITING_FOR_USER" and self.push_api and self.push_user_id:
+            try:
+                result = self.push_api.notify_captcha(self.push_user_id, message)
+                if not result or not result.get("sent"):
+                    print(f"Mobile CAPTCHA push was not delivered: {(result or {}).get('reason', 'unknown reason')}", file=sys.stderr, flush=True)
+            except RuntimeError as error:
+                print(f"Mobile CAPTCHA push failed: {error}", file=sys.stderr, flush=True)
 
 
 def notify_user(message: str) -> None:
@@ -711,6 +733,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visible local browser runner for Ambient Companion downloads")
     parser.add_argument("command", nargs="?", choices=("retry",), help="Retry previously failed database jobs")
     parser.add_argument("--api-url", default=os.getenv("RUNNER_API_URL", "http://127.0.0.1:8080"))
+    parser.add_argument("--push-user-id", default=os.getenv("RUNNER_PUSH_USER_ID"), help="Supabase user ID whose registered phone receives file-link CAPTCHA pushes")
     parser.add_argument("--runner-id", default=os.getenv("RUNNER_ID", f"{socket.gethostname()}-browser"))
     parser.add_argument("--savefrom-url", default=os.getenv("SAVEFROM_URL", DEFAULT_SAVEFROM_URL))
     parser.add_argument("--profile-dir", type=Path, default=Path(".local/browser-profile"))
@@ -742,6 +765,7 @@ def load_runner_environment() -> None:
     local_env = RUNNER_DIRECTORY / ".env"
     for key in (
         "RUNNER_API_URL",
+        "RUNNER_PUSH_USER_ID",
         "RUNNER_ID",
         "SAVEFROM_URL",
         "RUNNER_DOWNLOAD_DIR",
@@ -786,7 +810,20 @@ def main() -> int:
         if not batch_links:
             print("No pending URLs remain in the links file.")
             return 0
-        api: Any = LocalBatchStatus()
+        push_api = None
+        if args.push_user_id:
+            try:
+                args.push_user_id = str(UUID(args.push_user_id))
+            except ValueError:
+                print("RUNNER_PUSH_USER_ID must be a valid UUID.", file=sys.stderr)
+                return 2
+            repo_env = Path(__file__).resolve().parent.parent / "server" / ".env"
+            token = os.getenv("LOCAL_RUNNER_TOKEN") or read_env_value(repo_env, "LOCAL_RUNNER_TOKEN")
+            if not token or len(token) < 32:
+                print("LOCAL_RUNNER_TOKEN is missing or shorter than 32 characters. Add the same token to server/.env.", file=sys.stderr)
+                return 2
+            push_api = RunnerApi(args.api_url, token, args.runner_id)
+        api: Any = LocalBatchStatus(push_api, args.push_user_id)
     else:
         repo_env = Path(__file__).resolve().parent.parent / "server" / ".env"
         token = os.getenv("LOCAL_RUNNER_TOKEN") or read_env_value(repo_env, "LOCAL_RUNNER_TOKEN")

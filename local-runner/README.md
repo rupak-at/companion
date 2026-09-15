@@ -96,7 +96,16 @@ cd local-runner
 .venv/bin/python runner.py --links-file /absolute/path/to/available_links.txt
 ```
 
-This standalone mode does not require the backend, Docker, or `LOCAL_RUNNER_TOKEN`. It uses the same visible browser, CAPTCHA assistance, redirect handling, persistent profile, and download directory as queued jobs. Use `RUNNER_DOWNLOAD_DIR` or `--download-dir /path/to/folder` to select another destination.
+This standalone mode uses the same visible browser, CAPTCHA assistance, redirect handling, persistent profile, and download directory as queued jobs. It needs no backend unless you enable mobile CAPTCHA pushes. Use `RUNNER_DOWNLOAD_DIR` or `--download-dir /path/to/folder` to select another destination.
+
+To send a mobile push when a file link needs CAPTCHA, deploy the current server API and configure `local-runner/.env` with:
+
+```dotenv
+RUNNER_API_URL=https://your-vps-api.example.com
+RUNNER_PUSH_USER_ID=your-phone-supabase-user-uuid
+```
+
+`RUNNER_PUSH_USER_ID` must be the Supabase Auth user UUID associated with the phone's registered device token. Find it in the `DeviceToken` table's `userId` column (or the matching Supabase Auth user). The runner uses `LOCAL_RUNNER_TOKEN` from its environment or `server/.env`; this must match the token configured on the VPS. The VPS also needs its Firebase credentials, and the Android app must have registered its device token and have notification permission. You can pass `--api-url` and `--push-user-id` instead of the two URL/user settings above. The runner sends only the CAPTCHA message, not the link or a fabricated database job ID. If push delivery fails, it prints the reason and leaves local CAPTCHA handling available.
 
 Once a processed result appears, the runner clicks its download control first and checks for browser events every 250 ms while waiting. Once a browser download starts, retries stop and the runner waits for that file to finish; additional download events for the same job are cancelled. A direct media request is used only if the browser download does not start after the click retries.
 
