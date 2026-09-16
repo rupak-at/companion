@@ -13,8 +13,10 @@ from runner_support import (
     read_env_value,
     read_link_file,
     record_completed_link,
+    remove_recorded_link,
     safe_filename,
     score_download_candidate,
+    select_link_batch,
 )
 
 
@@ -81,6 +83,45 @@ class RunnerSupportTest(unittest.TestCase):
             record_completed_link(path, "https://www.tiktok.com/@other/video/123?second=1")
             self.assertEqual(path.read_text(encoding="utf-8"), f"{original}\n")
             self.assertIn(link_key("https://www.tiktok.com/@other/video/123"), read_completed_links(path))
+
+    def test_removes_matching_link_from_ledger_and_keeps_others(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "failed_links.txt"
+            path.write_text(
+                "https://www.tiktok.com/@one/video/123?first=1\nhttps://example.com/keep\n",
+                encoding="utf-8",
+            )
+
+            remove_recorded_link(path, "https://www.tiktok.com/@other/video/123?second=1")
+
+            self.assertEqual(path.read_text(encoding="utf-8"), "https://example.com/keep\n")
+
+    def test_normal_batch_skips_completed_and_saved_failures(self) -> None:
+        completed = "https://example.com/completed"
+        failed = "https://example.com/failed"
+        new = "https://example.com/new"
+
+        batch, completed_count, failed_count = select_link_batch(
+            [completed, failed, new], [failed], {link_key(completed)}, retry=False,
+        )
+
+        self.assertEqual(batch, [new])
+        self.assertEqual((completed_count, failed_count), (1, 1))
+
+    def test_retry_batch_uses_only_saved_failures_in_ledger_order(self) -> None:
+        completed_failure = "https://example.com/already-done"
+        first_failure = "https://example.com/first-failure"
+        second_failure = "https://example.com/second-failure"
+
+        batch, completed_count, failed_count = select_link_batch(
+            ["https://example.com/new-input"],
+            [first_failure, completed_failure, second_failure],
+            {link_key(completed_failure)},
+            retry=True,
+        )
+
+        self.assertEqual(batch, [first_failure, second_failure])
+        self.assertEqual((completed_count, failed_count), (1, 0))
 
 
 if __name__ == "__main__":

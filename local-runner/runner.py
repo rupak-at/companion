@@ -28,7 +28,9 @@ from runner_support import (
     read_env_value,
     read_link_file,
     record_completed_link,
+    remove_recorded_link,
     score_download_candidate,
+    select_link_batch,
 )
 
 
@@ -43,6 +45,7 @@ DEFAULT_SAVEFROM_URL = "https://en1.savefrom.net/16Em/download-from-tiktok"
 DEFAULT_DOWNLOAD_DIR = Path.home() / "Downloads" / "Ambient Companion"
 RUNNER_DIRECTORY = Path(__file__).resolve().parent
 DEFAULT_COMPLETED_LINKS_FILE = RUNNER_DIRECTORY / "downloaded_links.txt"
+DEFAULT_FAILED_LINKS_FILE = RUNNER_DIRECTORY / "failed_links.txt"
 CAPTCHA_SELECTORS = (
     '#output-captcha-dialog:visible',
     'iframe[src*="captcha" i]',
@@ -731,7 +734,7 @@ def process_job(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visible local browser runner for Ambient Companion downloads")
-    parser.add_argument("command", nargs="?", choices=("retry",), help="Retry previously failed database jobs")
+    parser.add_argument("command", nargs="?", choices=("retry",), help="Retry previously failed jobs or file links")
     parser.add_argument("--api-url", default=os.getenv("RUNNER_API_URL", "http://127.0.0.1:8080"))
     parser.add_argument("--push-user-id", default=os.getenv("RUNNER_PUSH_USER_ID"), help="Supabase user ID whose registered phone receives file-link CAPTCHA pushes")
     parser.add_argument("--runner-id", default=os.getenv("RUNNER_ID", f"{socket.gethostname()}-browser"))
@@ -757,7 +760,11 @@ def parse_args() -> argparse.Namespace:
         help="Start Chromium minimized (enabled by default; use --no-start-minimized to show it)",
     )
     parser.add_argument("--once", action="store_true", help="Exit when no queued job is available")
-    parser.add_argument("--retry", action="store_true", help="Requeue failed database jobs once, then process them")
+    parser.add_argument(
+        "--retry",
+        action="store_true",
+        help="Retry saved failed links with --links-file, otherwise requeue failed database jobs",
+    )
     return parser.parse_args()
 
 
@@ -782,9 +789,6 @@ def main() -> int:
     load_runner_environment()
     args = parse_args()
     args.retry = args.retry or args.command == "retry"
-    if args.retry and args.links_file:
-        print("--retry applies to database jobs; omit --links-file.", file=sys.stderr)
-        return 2
     if not is_savefrom_page(args.savefrom_url):
         print("SAVEFROM_URL must use savefrom.net or one of its subdomains.", file=sys.stderr)
         return 2
@@ -798,17 +802,27 @@ def main() -> int:
     if args.links_file:
         try:
             args.links_file = args.links_file.expanduser().resolve()
-            batch_links = read_link_file(args.links_file)
+            supplied_links = read_link_file(args.links_file)
             completed_keys = read_completed_links(DEFAULT_COMPLETED_LINKS_FILE)
-            already_completed = [link for link in batch_links if link_key(link) in completed_keys]
-            batch_links = [link for link in batch_links if link_key(link) not in completed_keys]
-            if already_completed:
-                print(f"Skipped {len(already_completed)} previously downloaded link(s); the input file was unchanged.")
+            failed_links = read_link_file(DEFAULT_FAILED_LINKS_FILE) if DEFAULT_FAILED_LINKS_FILE.exists() else []
+            batch_links, completed_count, failed_count = select_link_batch(
+                supplied_links, failed_links, completed_keys, args.retry,
+            )
+            if args.retry:
+                if completed_count:
+                    print(f"Skipped {completed_count} failed link(s) that are already downloaded.")
+                print(f"Retry mode: processing {len(batch_links)} saved failed link(s) only.")
+            else:
+                if completed_count:
+                    print(f"Skipped {completed_count} previously downloaded link(s); the input file was unchanged.")
+                if failed_count:
+                    print(f"Skipped {failed_count} previously failed link(s); use --retry to retry them.")
         except (OSError, ValueError) as error:
             print(f"Cannot read links file: {error}", file=sys.stderr)
             return 2
         if not batch_links:
-            print("No pending URLs remain in the links file.")
+            message = "No failed URLs are waiting for retry." if args.retry else "No pending new URLs remain in the links file."
+            print(message)
             return 0
         push_api = None
         if args.push_user_id:
@@ -866,12 +880,17 @@ def main() -> int:
                             allow_user_interaction=not args.headless,
                         )
                         record_completed_link(DEFAULT_COMPLETED_LINKS_FILE, source_url)
+                        remove_recorded_link(DEFAULT_FAILED_LINKS_FILE, source_url)
                         print(f"Recorded completion; kept the link in {args.links_file}")
                     except HumanVerificationRequired as error:
+                        record_completed_link(DEFAULT_FAILED_LINKS_FILE, source_url)
+                        print(f"Saved for retry in {DEFAULT_FAILED_LINKS_FILE}", file=sys.stderr)
                         print(str(error), file=sys.stderr)
                         return 3
                     except Exception as error:
                         failures += 1
+                        record_completed_link(DEFAULT_FAILED_LINKS_FILE, source_url)
+                        print(f"Saved for retry in {DEFAULT_FAILED_LINKS_FILE}", file=sys.stderr)
                         print(f"Skipped {source_url}: {error}", file=sys.stderr)
                 print(f"Batch finished: {len(batch_links) - failures} completed, {failures} failed.")
                 return 1 if failures else 0

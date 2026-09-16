@@ -118,6 +118,27 @@ def read_completed_links(path: Path) -> set[str]:
     return {link_key(line.strip()) for line in path.read_text(encoding="utf-8-sig").splitlines() if line.strip()}
 
 
+def select_link_batch(
+    supplied_links: list[str],
+    failed_links: list[str],
+    completed_keys: set[str],
+    retry: bool,
+) -> tuple[list[str], int, int]:
+    """Select new input links or, in retry mode, saved failures only."""
+    if retry:
+        batch = [link for link in failed_links if link_key(link) not in completed_keys]
+        return batch, len(failed_links) - len(batch), 0
+
+    failed_keys = {link_key(link) for link in failed_links}
+    completed_count = sum(link_key(link) in completed_keys for link in supplied_links)
+    failed_count = sum(link_key(link) in failed_keys for link in supplied_links)
+    batch = [
+        link for link in supplied_links
+        if link_key(link) not in completed_keys and link_key(link) not in failed_keys
+    ]
+    return batch, completed_count, failed_count
+
+
 def record_completed_link(path: Path, link: str) -> None:
     if link_key(link) in read_completed_links(path):
         return
@@ -126,3 +147,18 @@ def record_completed_link(path: Path, link: str) -> None:
         completed.write(f"{link}\n")
         completed.flush()
         os.fsync(completed.fileno())
+
+
+def remove_recorded_link(path: Path, link: str) -> None:
+    """Remove every ledger entry identifying the same source as ``link``."""
+    if not path.exists():
+        return
+    retained = [
+        line.strip()
+        for line in path.read_text(encoding="utf-8-sig").splitlines()
+        if line.strip() and link_key(line.strip()) != link_key(link)
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text("".join(f"{entry}\n" for entry in retained), encoding="utf-8")
+    temporary.replace(path)

@@ -73,7 +73,7 @@ export RUNNER_DOWNLOAD_DIR="/path/to/my/videos"
 .venv/bin/python runner.py
 ```
 
-To retry database jobs that failed previously, run `.venv/bin/python runner.py retry --once` (or use `--retry --once`). The API requeues failed TikTok, Instagram, and Facebook jobs once before the runner starts claiming jobs. It prints the number requeued and also processes other queued jobs. A job that fails again waits for another retry invocation. Retry mode does not apply to `--links-file`. Rebuild the server API after updating it; an older API returns a clear unsupported-retry error.
+To retry database jobs that failed previously, run `.venv/bin/python runner.py retry --once` (or use `--retry --once` without `--links-file`). The API requeues failed TikTok, Instagram, and Facebook jobs once before the runner starts claiming jobs. It prints the number requeued and also processes other queued jobs. A job that fails again waits for another retry invocation. When `--links-file` is present, `--retry` instead processes only the locally saved failed-link ledger described below. Rebuild the server API after updating it; an older API returns a clear unsupported-retry error.
 
 To keep this setting across terminal sessions, create the ignored `local-runner/.env` file from `.env.example` and set `RUNNER_DOWNLOAD_DIR` there. Existing shell environment values take priority. An explicit `--download-dir /another/path` takes priority over both. All options support `~` and relative paths. The persistent browser profile stays under `local-runner/.local/` and is ignored by Git.
 
@@ -89,12 +89,20 @@ Open Chromium from the taskbar after the notification, solve the CAPTCHA, and le
 
 ## Download URLs from a text file
 
-Put one complete URL on each line. Blank lines, comment lines beginning with `#`, and duplicate URLs are ignored. The runner never modifies this input file. After each successful download, the URL is appended to the ignored `local-runner/downloaded_links.txt` ledger. On restart, links already recorded in the ledger are skipped without being downloaded again, while every original line remains available in your source file. Then run:
+Put one complete URL on each line. Blank lines, comment lines beginning with `#`, and duplicate URLs are ignored. The runner never modifies this input file. After each successful download, the URL is appended to the ignored `local-runner/downloaded_links.txt` ledger. Failed URLs are saved in the ignored `local-runner/failed_links.txt` ledger. Normal runs skip both completed and previously failed URLs, while every original line remains available in your source file. Then run:
 
 ```sh
 cd local-runner
 .venv/bin/python runner.py --links-file /absolute/path/to/available_links.txt
 ```
+
+Retry only the URLs saved in `failed_links.txt` with:
+
+```sh
+.venv/bin/python runner.py --links-file /absolute/path/to/available_links.txt --retry
+```
+
+Saved failures are processed in ledger order and removed from `failed_links.txt` after a successful download. If one fails again, it remains available for the next explicit retry. The supplied links file selects standalone mode and is not modified; retry mode intentionally processes only the saved failure ledger.
 
 This standalone mode uses the same visible browser, CAPTCHA assistance, redirect handling, persistent profile, and download directory as queued jobs. It needs no backend unless you enable mobile CAPTCHA pushes. Use `RUNNER_DOWNLOAD_DIR` or `--download-dir /path/to/folder` to select another destination.
 
