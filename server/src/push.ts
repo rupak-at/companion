@@ -2,6 +2,7 @@ import { cert, getApps, initializeApp, getApp } from "firebase-admin/app";
 import { getMessaging } from "firebase-admin/messaging";
 import { prisma } from "./services.js";
 import { config } from "./config.js";
+import { staleInvalidTokenValues } from "./push-token-policy.js";
 
 function firebaseApp() {
   if (!config.FIREBASE_PROJECT_ID || !config.FIREBASE_CLIENT_EMAIL || !config.FIREBASE_PRIVATE_KEY) return null;
@@ -17,19 +18,22 @@ function firebaseApp() {
 export async function notifyCaptchaRequired(userId: string, jobId: string | undefined, message: string): Promise<{ sent: number; reason?: string }> {
   const app = firebaseApp();
   if (!app) return { sent: 0, reason: "FCM_NOT_CONFIGURED" };
-  const devices = await prisma.deviceToken.findMany({ where: { userId } });
+  const devices = await prisma.deviceToken.findMany({
+    where: { userId },
+    orderBy: { updatedAt: "desc" },
+  });
   if (devices.length === 0) return { sent: 0, reason: "NO_REGISTERED_DEVICE" };
   const result = await getMessaging(app).sendEachForMulticast({
     tokens: devices.map((device) => device.token),
     data: { type: "CAPTCHA_REQUIRED", ...(jobId ? { jobId } : {}), title: "Verification required", body: message },
     notification: { title: "Verification required", body: message },
   });
-  const invalidTokens = devices.filter((_, index) => {
-    const error = result.responses[index].error;
-    return error?.code === "messaging/registration-token-not-registered" || error?.code === "messaging/invalid-registration-token";
-  });
-  if (invalidTokens.length > 0) {
-    await prisma.deviceToken.deleteMany({ where: { token: { in: invalidTokens.map((device) => device.token) } } });
+  const staleInvalidTokens = staleInvalidTokenValues(
+    devices,
+    result.responses.map((response) => response.error?.code),
+  );
+  if (staleInvalidTokens.length > 0) {
+    await prisma.deviceToken.deleteMany({ where: { token: { in: staleInvalidTokens } } });
   }
   return {
     sent: result.successCount,
