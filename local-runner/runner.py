@@ -857,7 +857,11 @@ def main() -> int:
             user_data_dir=args.profile_dir,
             headless=args.headless,
             accept_downloads=True,
-            args=["--start-minimized"] if args.start_minimized and not args.headless else [],
+            # Give desktop window rules a stable identity that does not also
+            # match the user's regular browser or change during navigation.
+            args=["--class=ambient-companion-runner"] + (
+                ["--start-minimized"] if args.start_minimized and not args.headless else []
+            ),
         )
         try:
             page = context.pages[0] if context.pages else context.new_page()

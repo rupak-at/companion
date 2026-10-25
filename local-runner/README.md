@@ -27,6 +27,29 @@ This opens Chromium visibly, lets you solve CAPTCHA directly, and saves videos t
 
 After code or `.env` changes, stop the old runner with `Ctrl+C` and start it again using the same command. An already running Python process does not load these updates. Run only one instance with the same browser profile. The updated runner prints `Browser download started; waiting for the file to finish.` when a download begins.
 
+### Visible Chromium without stealing focus on Omarchy
+
+Minimizing only affects startup. A visible browser can still request focus when
+pages navigate or popups open. The runner launches Chromium with the dedicated
+window class `ambient-companion-runner`, so desktop rules can target it separately
+from your normal browser.
+
+On Omarchy with Hyprland 0.55+ (Lua configuration), add this to
+`~/.config/hypr/hyprland.lua` after the Omarchy defaults:
+
+```lua
+o.window("^ambient-companion-runner$", {
+  no_initial_focus = true,
+  suppress_event = "maximize activate activatefocus",
+})
+```
+
+Run `hyprctl reload` and check `hyprctl configerrors`, then restart the runner.
+This blocks initial focus and application activation requests, including requests
+from another workspace. You can still select Chromium yourself to solve CAPTCHA.
+Keep `RUNNER_HEADLESS=false` for this workflow. See the
+[Hyprland window-rule documentation](https://wiki.hypr.land/Configuring/Basics/Window-Rules/).
+
 ## Backend connection failures
 
 A `P1001` error mentioning Supabase means the backend cannot reach its database. A video already reported as `Downloaded:` is saved locally; an error claiming the next job does not remove it.
