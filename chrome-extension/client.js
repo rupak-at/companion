@@ -5,7 +5,9 @@ const expiredSessionCodes = new Set(["refresh_token_not_found", "refresh_token_a
 export class CompanionClient {
   constructor({ storage, fetcher = fetch, now = Date.now, hasHostAccess = async () => true }) {
     this.storage = storage;
-    this.fetcher = fetcher;
+    // WorkerGlobalScope.fetch is an illegal invocation when called as a method
+    // on this client. Keep its required global receiver for real network calls.
+    this.fetcher = fetcher.bind(globalThis);
     this.now = now;
     this.hasHostAccess = hasHostAccess;
   }
