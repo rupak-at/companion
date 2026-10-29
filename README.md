@@ -150,6 +150,15 @@ From TikTok or Instagram, choose **Share → Download with Ambient**. The share 
 Repository automation rules live in [AGENTS.md](AGENTS.md). In particular, each coherent
 change must be verified and committed separately so it can be reverted safely.
 
+### Save links from Chrome on your laptop
+
+Load the unpacked [Save to Companion extension](chrome-extension/README.md) to save
+TikTok, Instagram, and Facebook links from the browser toolbar, a pasted URL, or a
+right-click menu. It submits to the existing API and local runner, keeps unsent links
+locally, and retries temporary connection failures. The guide covers installation,
+server connection, everyday use, and troubleshooting. Phone and browser sign-ins
+are separate; the current personal runner processes both users' waiting jobs.
+
 ## Privacy
 
 Ambient Companion does not need identity, precise-location history, contacts, messages,

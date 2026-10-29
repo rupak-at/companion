@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Companion connection</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="options.js"></script>
+</head>
+<body class="options">
+  <header class="brand">
+    <img src="icons/128.png" alt="" width="64" height="64">
+    <div><h1>Companion</h1><p>Your finds, ready for later.</p></div>
+  </header>
+  <main>
+    <h2>Connect your laptop</h2>
+    <p>Use the same Companion server and Supabase project as your phone. You only need to do this once.</p>
+    <form id="settings-form">
+      <div class="field">
+        <label for="api-url">Companion server URL</label>
+        <input id="api-url" type="url" placeholder="https://companion.example.com" required autocomplete="off" spellcheck="false" aria-describedby="api-help">
+        <p id="api-help" class="hint">For a server on this laptop, use http://localhost:8080.</p>
+      </div>
+      <div class="field">
+        <label for="supabase-url">Supabase project URL</label>
+        <input id="supabase-url" type="url" placeholder="https://your-project.supabase.co" required autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="public-key">Supabase publishable or anon key</label>
+        <input id="public-key" type="password" required autocomplete="off" spellcheck="false" aria-describedby="key-help">
+        <p id="key-help" class="hint">Use the public client key from your project settings. Keep secret, service-role, and runner tokens out of this form.</p>
+      </div>
+      <button id="save-settings" class="primary" type="submit">Save connection</button>
+      <p id="notice" class="notice" role="status" aria-live="polite"></p>
+    </form>
+    <aside class="connection-note">
+      <h3>After connecting</h3>
+      <p>Pin Companion in your browser toolbar. Open a post, click Companion, and select <strong>Save to Companion</strong>. You can also right-click a link to save it.</p>
+      <p>This browser signs in separately from your phone. Both send links to the same server, and your existing runner picks them up. Phone notifications and duplicate detection are tied to each sign-in.</p>
+      <a href="README.md" target="_blank">Installation and usage guide</a>
+    </aside>
+  </main>
+  <footer>Only links you choose to save are sent. No page content or browsing history is collected.</footer>
+</body>
+</html>

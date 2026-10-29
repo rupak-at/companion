@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Save to Companion</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="popup.js"></script>
+</head>
+<body class="popup">
+  <header class="brand">
+    <img src="icons/128.png" alt="" width="56" height="56">
+    <div><h1>Companion</h1><p>A little space for your finds.</p></div>
+    <button id="settings" class="text-button" type="button">Settings</button>
+  </header>
+  <main>
+    <section class="save-section" aria-labelledby="save-heading">
+      <h2 id="save-heading">Found something good?</h2>
+      <p>Keep the link. Download it later.</p>
+      <form id="save-form">
+        <label for="url">Post or video link</label>
+        <input id="url" name="url" type="url" placeholder="Paste a TikTok, Instagram, or Facebook link" maxlength="2048" required autocomplete="off" spellcheck="false">
+        <button id="save" class="primary" type="submit">Save to Companion</button>
+      </form>
+      <p id="notice" class="notice" role="status" aria-live="polite"></p>
+    </section>
+    <section id="setup" class="setup" hidden>
+      <p>Connect your server once to start sending links. Your pending links stay on this laptop until then.</p>
+      <button id="connect" class="text-button" type="button">Set up connection</button>
+    </section>
+    <section aria-labelledby="queue-heading">
+      <div class="section-heading"><h2 id="queue-heading">Your links</h2><button id="retry" class="text-button" type="button" hidden>Retry now</button></div>
+      <p id="queue-summary" class="muted"></p>
+      <ul id="pending" class="link-list" aria-label="Pending links"></ul>
+      <ul id="recent" class="link-list" aria-label="Recently saved links"></ul>
+      <p id="empty" class="empty">Your next good find belongs here.<br>Save a link above, or right-click a link while browsing.</p>
+    </section>
+  </main>
+  <footer>Saved links go to your existing laptop runner.</footer>
+</body>
+</html>
