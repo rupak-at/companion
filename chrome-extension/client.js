@@ -3,13 +3,19 @@ import { RequestError } from "./core.js";
 const expiredSessionCodes = new Set(["refresh_token_not_found", "refresh_token_already_used", "session_expired", "session_not_found"]);
 
 export class CompanionClient {
-  constructor({ storage, fetcher = fetch, now = Date.now }) {
+  constructor({ storage, fetcher = fetch, now = Date.now, hasHostAccess = async () => true }) {
     this.storage = storage;
     this.fetcher = fetcher;
     this.now = now;
+    this.hasHostAccess = hasHostAccess;
   }
 
   async request(url, body, headers = {}, service = "server") {
+    let origin;
+    try { origin = new URL(url).origin; } catch { origin = "the configured address"; }
+    if (!(await this.hasHostAccess(url))) {
+      throw new RequestError(`Chrome has not granted Companion access to ${origin}. Allow this host in chrome://extensions, then choose Retry now.`);
+    }
     let response;
     try {
       response = await this.fetcher(url, {
@@ -23,7 +29,7 @@ export class CompanionClient {
       const timedOut = error?.name === "TimeoutError";
       throw new RequestError(
         timedOut ? `Connection to ${host} timed out. Check that ${service} is online and the URL is correct.`
-          : `Could not connect to ${service} at ${host}. Check that the URL is correct and Chrome allows this host in Companion Settings.`,
+          : `Could not connect to ${service} at ${host} (${error?.name || "network error"}: ${error?.message || "request failed"}). Check the browser's network/extension access for this host.`,
         true,
       );
     }

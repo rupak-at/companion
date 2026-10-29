@@ -20,7 +20,17 @@ async function badge() {
   await chrome.action.setTitle({ title });
 }
 
-const queue = new LinkQueue({ storage, client: new CompanionClient({ storage }), changed: badge });
+const queue = new LinkQueue({
+  storage,
+  client: new CompanionClient({
+    storage,
+    hasHostAccess: async (url) => {
+      const origin = new URL(url).origin;
+      return chrome.permissions.contains({ origins: [`${origin}/*`] });
+    },
+  }),
+  changed: badge,
+});
 // Restrict stored sessions to extension pages and the service worker.
 const ready = storage.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
 
