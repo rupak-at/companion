@@ -100,6 +100,9 @@ class RunnerApi:
         self.runner_id = runner_id
 
     def claim(self) -> dict[str, Any] | None:
+        print("Runtime token length:", len(self.token))
+        print("Runtime token has whitespace:", self.token != self.token.strip())
+        print("Environment token exists:", bool(os.getenv("LOCAL_RUNNER_TOKEN")))
         return self._request("POST", "/api/v1/runner/jobs/claim", {"runnerId": self.runner_id}, allow_empty=True)
 
     def requeue_failed(self) -> int:
@@ -126,9 +129,10 @@ class RunnerApi:
         request = Request(
             f"{self.base_url}{path}",
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json", "User-Agent": "CompanionLocalRunner/1.0"},
             method=method,
         )
+        
         try:
             with urlopen(request, timeout=20) as response:
                 body = response.read()

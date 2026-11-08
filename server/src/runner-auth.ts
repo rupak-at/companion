@@ -8,14 +8,14 @@ export function isRunnerAuthorized(
 
   const supplied = match?.[1] ?? "";
 
-  console.log("[RUNNER AUTH DIAG]", {
-    expectedConfigured: Boolean(expectedToken),
-    expectedLength: expectedToken?.length,
-    suppliedLength: supplied.length,
-    expectedHasWhitespace: expectedToken !== expectedToken?.trim(),
-    suppliedHasWhitespace: supplied !== supplied.trim(),
-    lengthMatches: supplied.length === expectedToken?.length,
-  });
+  // console.log("[RUNNER AUTH DIAG]", {
+  //   expectedConfigured: Boolean(expectedToken),
+  //   expectedLength: expectedToken?.length,
+  //   suppliedLength: supplied.length,
+  //   expectedHasWhitespace: expectedToken !== expectedToken?.trim(),
+  //   suppliedHasWhitespace: supplied !== supplied.trim(),
+  //   lengthMatches: supplied.length === expectedToken?.length,
+  // });
 
   if (!expectedToken || !match) return false;
 
