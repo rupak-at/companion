@@ -11,6 +11,8 @@ import { classifyUrl, validatePublicUrl } from "./url-security.js";
 import { parseJobId } from "./request-validation.js";
 import { isRunnerAuthorized } from "./runner-auth.js";
 import { notifyCaptchaRequired } from "./push.js";
+import { lookup } from "node:dns/promises";
+import { createConnection } from "node:net";
 
 const app = Fastify({ logger: true, bodyLimit: 16_384 });
 const createBody = z.object({ url: z.string().url().max(2048), format: z.enum(["video", "image"]).optional() });
@@ -217,5 +219,42 @@ app.delete<{ Params: { jobId: string } }>("/api/v1/downloads/:jobId", async (req
   await prisma.downloadJob.delete({ where: { id: job.id } });
   return reply.code(204).send();
 });
+
+
+async function diagnoseDatabaseNetwork() {
+  try {
+    const dbUrl = new URL(process.env.DATABASE_URL!);
+    const host = dbUrl.hostname;
+    const port = Number(dbUrl.port || 5432);
+
+    console.log("[DB DIAG] Checking host:", host);
+
+    const addresses = await lookup(host, { all: true });
+    console.log("[DB DIAG] DNS resolved:", addresses);
+
+    await new Promise<void>((resolve, reject) => {
+      const socket = createConnection({ host, port });
+
+      socket.setTimeout(8000);
+
+      socket.once("connect", () => {
+        console.log("[DB DIAG] TCP CONNECTION SUCCESS");
+        socket.end();
+        resolve();
+      });
+
+      socket.once("timeout", () => {
+        socket.destroy();
+        reject(new Error("TCP connection timeout"));
+      });
+
+      socket.once("error", reject);
+    });
+  } catch (error) {
+    console.error("[DB DIAG] FAILED:", error);
+  }
+}
+
+await diagnoseDatabaseNetwork();
 
 app.listen({ host: "0.0.0.0", port: config.PORT }).catch((error) => { app.log.error(error); process.exit(1); });
